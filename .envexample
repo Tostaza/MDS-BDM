@@ -1,0 +1,4 @@
+ACCESS_KEY_ID=minioadmin28
+SECRET_ACCESS_KEY=minioadmin28
+API_ENDPOINT=localhost:9000
+CONSOLE_ENDPOINT=localhost:9001
