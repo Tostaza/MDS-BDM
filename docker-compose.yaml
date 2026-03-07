@@ -1,16 +1,18 @@
 name: bdm
+
 services:
-  minio:
-    image: quay.io/minio/minio
+  seaweedfs:
+    image: chrislusf/seaweedfs
     ports:
-      - 9000:9000 # MinIO Api
-      - 9001:9001 # MinIO Console
-    command: server /data --console-address=":9001"
-    environment:
-      MINIO_ROOT_USER: ${ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${SECRET_ACCESS_KEY}
+      - ${SEAWEEDFS_MASTER_UI_ENDPOINT}:9333 # Master UI
+      - ${SEAWEEDFS_FILER_UI_ENDPOINT}:8888 # Filer UI
+      - ${SEAWEEDFS_S3_ENDPOINT}:8333 # S3 Endpoint
+      - ${SEAWEEDFS_ADMIN_UI_ENDPOINT}:23646 # Admin UI
+      - ${SEAWEEDFS_VOLUME_SERVER_UI_ENDPOINT}:9340 # Volume Server
+    command: 'mini -dir=/data'
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
+    env_file: .env
 
 volumes:
-  minio-data:
+  seaweedfs-data:
