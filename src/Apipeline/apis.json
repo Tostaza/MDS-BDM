@@ -1,0 +1,42 @@
+{
+    "apis":[
+        {
+            "api":"emmanuelfwerr/barcelona-car-accidents"
+        },
+        {
+            "api":"jessicarippman/barcelona-car-accidents-dataset"
+        },
+        {
+            "api":"falloufall21/barcelona-car-accident-2023"
+        },
+        {
+            "api":"subho117/rainfall-prediction-using-machine-learning"
+        },
+        {
+            "api":"kanishka089/RainPrediction"
+        },
+        {
+            "api": "https://opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download",
+            "api2": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=d55b67dd-7078-4b3d-a557-d3363230083d",
+            "api3": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=c97072a3-3619-4547-84dd-f1999d2a3fec",
+            "api4": "https://www.gencat.cat/transit/opendata/035_RSS.xml",
+            "api5": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=796504f6-7602-41a7-82a9-d3bd47e68dee",
+            "api6": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=066d46b1-25be-4f08-b0e0-5a233714bda2",
+            "api7": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=8e7388ee-ffbd-446e-a8ad-c427a99da48d",
+            "api8": "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
+        },
+        {
+            "api":"https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+        },
+        {
+            "api":"https://routes.googleapis.com/directions/v2:computeRoutes"
+        },
+        {
+            "api": "https://www.gencat.cat/transit/opendata/cameres.xml"
+        },
+        {
+            "api":"sensorIoT"
+        }
+
+    ]
+}
