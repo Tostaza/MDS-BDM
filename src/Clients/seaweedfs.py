@@ -26,10 +26,10 @@ class Seaweedfs(Client):
             endpoint_url="http://" + self.api_endpoint,
         )
     
-    def load(self, bucket, json_bytes):
+    def load(self, bucket, json_bytes, key):
         self.s3_client.put_object(
             Bucket=bucket,
-            Key="barcelona_data_3.json",
+            Key=key,
             Body=json_bytes,
         )
 

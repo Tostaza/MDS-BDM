@@ -9,5 +9,5 @@ class JSON(Extractor):
     def extract_data(self, api_endpoint):
         
         response = requests.get(api_endpoint)
-        key = ""
+        key = api_endpoint
         return response.json(), key

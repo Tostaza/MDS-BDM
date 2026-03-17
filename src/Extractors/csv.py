@@ -7,8 +7,9 @@ import requests
 
 @dataclass
 class csv(Extractor):
+    
 
     def extract_data(self, api_endpoint):
         response = requests.get(api_endpoint)
-        key =""
+        key = api_endpoint
         return response, key
