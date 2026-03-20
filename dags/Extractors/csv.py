@@ -6,10 +6,14 @@ import kagglehub
 import os
 import pandas as pd
 from datasets import load_dataset
+import hashlib
 
 
 @dataclass
 class ExtractorCSV(Extractor):
+    
+    def hash_path(self, path):
+        return hashlib.md5(path.encode()).hexdigest()
     
     def extract_data(self, api_endpoint, source):
         if source is None:
@@ -20,7 +24,7 @@ class ExtractorCSV(Extractor):
             return self.huggingface_extract(api_endpoint)
         else:
             response = requests.get(api_endpoint)
-            return response, api_endpoint
+            return response, f"{self.hash_path(api_endpoint)}.csv"
     
     def extract_data_Tom_Tom(api_data, token, point):
         pass
@@ -32,9 +36,9 @@ class ExtractorCSV(Extractor):
         path2 = kagglehub.dataset_download(api_endpoint)
         path_file  = os.path.join(path2,os.listdir(path2)[0])
         df = pd.read_csv(path_file)
-        return df, path_file
+        return df, f"{self.hash_path(path_file)}.csv"
         
     def huggingface_extract(self, api_endpoint):
         ds = load_dataset(api_endpoint)
         data = ds['train'].to_pandas()
-        return data, api_endpoint
+        return data, f"{self.hash_path(api_endpoint)}.csv"
