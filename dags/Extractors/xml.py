@@ -19,9 +19,6 @@ class ExtractorXML(Extractor):
         json_bytes = BytesIO(json.dumps(data).encode("utf-8"))
         json_bytes.seek(0)
         return json_bytes, f"{self.hash_path(api_endpoint)}.xml"
-    
-    def extract_data_Tom_Tom(api_data, token, point):
-        pass
-        
-    def extract_data_google(api_data, token, origin, destination):
+
+    def extract_real_time_data(self, api_endpoint, type):
         pass

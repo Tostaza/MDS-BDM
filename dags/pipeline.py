@@ -8,12 +8,13 @@ from airflow.operators.python import PythonOperator
 from Extractors.csv import ExtractorCSV
 from Extractors.json import ExtractorJSON
 from Extractors.xml import ExtractorXML
+from Extractors.realTime import ExtractorRealTime
 from Clients.client import Client
 from Clients.seaweedfs import Seaweedfs
 
 
 BASE_DIR = os.path.dirname(__file__)
-RUTA_JSON = os.path.join(BASE_DIR, "apis.json")
+RUTA_JSON = os.path.join(BASE_DIR, "JSON", "apis.json")
 
 
 def load_api_config():
@@ -70,17 +71,18 @@ def task_xml(**context):
         s3_client.load_xml("temporal-landing-zone", document, cfg["source"]+key)
 
 def task_real_time(**context):
-    pass
-    #apis = load_api_config()
-    #rt_apis = filter_apis(apis, data_type="real_time")
+    s3_client =  Seaweedfs()
+    s3_client.connect()
+    apis = load_api_config()
+    rt_apis = filter_apis(apis, data_type="real_time")
 
-    #for cfg in rt_apis:
-        #url = cfg["api"]
-        #extractor = realTime.RealTime()
-        #document, key = extractor.extract(url)
-        # Diferent, perque aqui el que hauras de fer es segurament aplicar un acces per descarregar imatges.
-        # i inclus també fotreles amb el kafka.
-        #s3_client.load("temporal-landing-zone", document, key)
+    for cfg in rt_apis:
+        url = cfg["api"]
+        type = cfg["type"]
+        extractor = ExtractorRealTime()
+        document, key = extractor.extract_real_time_data(url, type)
+        if document is not None:
+            s3_client.load_real_time("temporal-landing-zone", document, key)
 
 
 with DAG(
@@ -105,9 +107,17 @@ with DAG(
         python_callable=task_xml,
     )
 
-    real_time_task = PythonOperator(
+    [_csv_task, _json_task, _xml_task]
+    
+    
+with DAG(
+    dag_id="bdm_pipeline_realtime",
+    schedule="*/10 * * * *",
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+) as dag_rt:
+
+    realtime_task = PythonOperator(
         task_id="real_time_task",
         python_callable=task_real_time,
     )
-
-    [_csv_task, _json_task, _xml_task, real_time_task]

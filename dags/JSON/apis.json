@@ -65,26 +65,48 @@
             "data_type": "xml",
             "api": "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
         },
+        {
+            "source": "real_time",
+            "type": "xml",
+            "data_type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
+        },
 
         {
             "source": "real_time",
+            "type": "TomTom",
             "data_type": "real_time",
             "api": "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
         },
         {
             "source": "real_time",
+            "type": "Google",
             "data_type": "real_time",
             "api": "https://routes.googleapis.com/directions/v2:computeRoutes"
         },
         {
             "source": "real_time",
+            "type": "webApi",
             "data_type": "real_time",
             "api": "https://www.gencat.cat/transit/opendata/cameres.xml"
         },
         {
             "source": "real_time",
+            "type": "python_code",
             "data_type": "real_time",
             "api": "sensorIoT"
+        } ,
+        {
+            "source": "real_time",
+            "data_type": "xml",
+            "type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/035_RSS.xml"
+        },
+        {
+            "source": "real_time",
+            "data_type": "xml",
+            "type": "xml",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download"
         }
     ]
 }

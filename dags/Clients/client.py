@@ -42,3 +42,7 @@ class Client(ABC):
     @abstractmethod
     def load_doc(self, bucket, df, key):
         pass
+    
+    @abstractmethod
+    def load_real_time(self, bucket, doc, key):
+        pass

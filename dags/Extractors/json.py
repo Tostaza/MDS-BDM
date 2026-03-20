@@ -14,8 +14,5 @@ class ExtractorJSON(Extractor):
         response = requests.get(api_endpoint)
         return response.json(), f"{self.hash_path(api_endpoint)}.json"
 
-    def extract_data_Tom_Tom(api_data, token, point):
-        pass
-    
-    def extract_data_google(api_data, token, origin, destination):
+    def extract_real_time_data(self, api_endpoint, type):
         pass

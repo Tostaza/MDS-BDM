@@ -8,11 +8,6 @@ class Extractor(ABC):
     @abstractmethod
     def extract_data(self, api_endpoint):
         pass
-    
     @abstractmethod
-    def extract_data_Tom_Tom(api_data, token, point):
-        pass
-    
-    @abstractmethod
-    def extract_data_google(api_data, token, origin, destination):
+    def extract_real_time_data(self, api_endpoint, type):
         pass
