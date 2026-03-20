@@ -1,0 +1,67 @@
+[2026-03-20T09:37:30.555+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2026-03-20T09:37:30.588+0000] {taskinstance.py:2073} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:37:27.370924+00:00 [queued]>
+[2026-03-20T09:37:30.598+0000] {taskinstance.py:2073} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:37:27.370924+00:00 [queued]>
+[2026-03-20T09:37:30.598+0000] {taskinstance.py:2303} INFO - Starting attempt 1 of 1
+[2026-03-20T09:37:30.613+0000] {taskinstance.py:2327} INFO - Executing <Task(PythonOperator): kaggle_csv_task> on 2026-03-20 09:37:27.370924+00:00
+[2026-03-20T09:37:30.650+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'bdm_pipeline', 'kaggle_csv_task', 'manual__2026-03-20T09:37:27.370924+00:00', '--job-id', '78', '--raw', '--subdir', 'DAGS_FOLDER/pipeline.py', '--cfg-path', '/tmp/tmp9g1xh3mq']
+[2026-03-20T09:37:30.654+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:61 DeprecationWarning: This process (pid=192) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2026-03-20T09:37:30.657+0000] {standard_task_runner.py:63} INFO - Started process 198 to run task
+[2026-03-20T09:37:30.657+0000] {standard_task_runner.py:91} INFO - Job 78: Subtask kaggle_csv_task
+[2026-03-20T09:37:30.755+0000] {task_command.py:426} INFO - Running <TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:37:27.370924+00:00 [running]> on host ca1987c08340
+[2026-03-20T09:37:30.898+0000] {taskinstance.py:2644} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='bdm_pipeline' AIRFLOW_CTX_TASK_ID='kaggle_csv_task' AIRFLOW_CTX_EXECUTION_DATE='2026-03-20T09:37:27.370924+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2026-03-20T09:37:27.370924+00:00'
+[2026-03-20T09:37:30.902+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2026-03-20T09:37:32.510+0000] {logging_mixin.py:188} INFO - load_api_config
+[2026-03-20T09:37:32.511+0000] {logging_mixin.py:188} INFO - filter apis
+[2026-03-20T09:37:33.670+0000] {logging_mixin.py:188} WARNING - /opt/***/dags/Extractors/csv.py:31 DtypeWarning: Columns (3) have mixed types. Specify dtype option on import or set low_memory=False.
+[2026-03-20T09:37:36.596+0000] {logging_mixin.py:188} WARNING -   0%|          | 0.00/167k [00:00<?, ?B/s]
+[2026-03-20T09:37:36.963+0000] {logging_mixin.py:188} WARNING - 100%|##########| 167k/167k [00:00<00:00, 470kB/s]
+[2026-03-20T09:37:36.964+0000] {logging_mixin.py:188} WARNING - 100%|##########| 167k/167k [00:00<00:00, 468kB/s]
+[2026-03-20T09:37:38.934+0000] {logging_mixin.py:188} WARNING -   0%|          | 0.00/395k [00:00<?, ?B/s]
+[2026-03-20T09:37:39.712+0000] {logging_mixin.py:188} WARNING - 100%|##########| 395k/395k [00:00<00:00, 521kB/s]
+[2026-03-20T09:37:39.713+0000] {logging_mixin.py:188} WARNING - 100%|##########| 395k/395k [00:00<00:00, 520kB/s]
+[2026-03-20T09:37:41.392+0000] {logging_mixin.py:188} WARNING -   0%|          | 0.00/6.55k [00:00<?, ?B/s]
+[2026-03-20T09:37:41.395+0000] {logging_mixin.py:188} WARNING - 100%|##########| 6.55k/6.55k [00:00<00:00, 8.27MB/s]
+[2026-03-20T09:37:44.193+0000] {_http.py:916} WARNING - Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+[2026-03-20T09:37:48.197+0000] {logging_mixin.py:188} WARNING - Generating train split:   0%|          | 0/1379 [00:00<?, ? examples/s]
+[2026-03-20T09:37:48.241+0000] {logging_mixin.py:188} WARNING - Generating train split: 100%|##########| 1379/1379 [00:00<00:00, 33488.77 examples/s]
+[2026-03-20T09:37:48.293+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2026-03-20T09:37:48.295+0000] {taskinstance.py:2890} ERROR - Task failed with exception
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 465, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 432, in _execute_callable
+    return execute_callable(context=context, **execute_callable_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/baseoperator.py", line 400, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/python.py", line 235, in execute
+    return_value = self.execute_callable()
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/python.py", line 252, in execute_callable
+    return self.python_callable(*self.op_args, **self.op_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/airflow/dags/pipeline.py", line 43, in task_csv
+    doc, key = extractor.extract_data(api_id, cfg["source"])
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/airflow/dags/Extractors/csv.py", line 20, in extract_data
+    return self.huggingface_extract(api_endpoint)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/airflow/dags/Extractors/csv.py", line 35, in huggingface_extract
+    ds = load_dataset(api_endpoint)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/datasets/load.py", line 1688, in load_dataset
+    builder_instance = load_dataset_builder(
+                       ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/datasets/load.py", line 1315, in load_dataset_builder
+    dataset_module = dataset_module_factory(
+                     ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/datasets/load.py", line 1209, in dataset_module_factory
+    raise FileNotFoundError(f"Couldn't find any data file at {relative_to_absolute_path(path)}.")
+FileNotFoundError: Couldn't find any data file at /opt/***/https:/opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download.
+[2026-03-20T09:37:48.327+0000] {taskinstance.py:1205} INFO - Marking task as FAILED. dag_id=bdm_pipeline, task_id=kaggle_csv_task, execution_date=20260320T093727, start_date=20260320T093730, end_date=20260320T093748
+[2026-03-20T09:37:48.394+0000] {standard_task_runner.py:110} ERROR - Failed to execute job 78 for task kaggle_csv_task (Couldn't find any data file at /opt/***/https:/opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download.; 198)
+[2026-03-20T09:37:48.556+0000] {local_task_job_runner.py:240} INFO - Task exited with return code 1
+[2026-03-20T09:37:48.773+0000] {taskinstance.py:3482} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2026-03-20T09:37:48.777+0000] {local_task_job_runner.py:222} INFO - ::endgroup::

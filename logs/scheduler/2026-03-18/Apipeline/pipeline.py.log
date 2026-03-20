@@ -1,0 +1,211 @@
+[2026-03-18T17:30:27.090+0000] {processor.py:161} INFO - Started process (PID=163) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:27.091+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:30:27.092+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:30:27.091+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:27.097+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:30:27.096+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 6, in <module>
+    from airflow.providers.standard.operators.python import PythonOperator
+ModuleNotFoundError: No module named 'airflow.providers.standard'
+[2026-03-18T17:30:27.097+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:27.109+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.022 seconds
+[2026-03-18T17:30:57.456+0000] {processor.py:161} INFO - Started process (PID=169) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:57.457+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:30:57.460+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:30:57.459+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:57.466+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:30:57.464+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 6, in <module>
+    from airflow.providers.standard.operators.python import PythonOperator
+ModuleNotFoundError: No module named 'airflow.providers.standard'
+[2026-03-18T17:30:57.466+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:30:57.489+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.040 seconds
+[2026-03-18T17:31:25.984+0000] {processor.py:161} INFO - Started process (PID=174) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:25.986+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:31:25.994+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:31:25.992+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:26.004+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:31:26.002+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 8, in <module>
+    from ..Extractors.csv import ExtractorCSV
+ImportError: attempted relative import with no known parent package
+[2026-03-18T17:31:26.005+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:26.051+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.076 seconds
+[2026-03-18T17:31:55.310+0000] {processor.py:161} INFO - Started process (PID=163) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:55.311+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:31:55.313+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:31:55.313+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:55.318+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:31:55.317+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 8, in <module>
+    from ..Extractors.csv import ExtractorCSV
+ImportError: attempted relative import with no known parent package
+[2026-03-18T17:31:55.320+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:31:55.331+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.025 seconds
+[2026-03-18T17:32:25.560+0000] {processor.py:161} INFO - Started process (PID=168) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:25.561+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:32:25.563+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:32:25.562+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:25.569+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:32:25.566+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 8, in <module>
+    from ..Extractors.csv import ExtractorCSV
+ImportError: attempted relative import with no known parent package
+[2026-03-18T17:32:25.569+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:25.588+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.034 seconds
+[2026-03-18T17:32:29.658+0000] {processor.py:161} INFO - Started process (PID=173) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:29.662+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:32:29.672+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:32:29.670+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:30.032+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:32:30.018+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 19, in <module>
+    s3_client.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  [Previous line repeated 943 more times]
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 16, in connect
+    load_dotenv()
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 356, in load_dotenv
+    return dotenv.set_as_environment_variables()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 92, in set_as_environment_variables
+    if not self.dict():
+           ^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 76, in dict
+    self._dict = OrderedDict(resolve_variables(raw_values, override=self.override))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 238, in resolve_variables
+    for (name, value) in values:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 84, in parse
+    for mapping in with_warn_for_invalid_lines(parse_stream(stream)):
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 26, in with_warn_for_invalid_lines
+    for mapping in mappings:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 173, in parse_stream
+    reader = Reader(stream)
+             ^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 65, in __init__
+    self.position = Position.start()
+                    ^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 47, in start
+    return cls(chars=0, line=1)
+           ^^^^^^^^^^^^^^^^^^^^
+RecursionError: maximum recursion depth exceeded
+[2026-03-18T17:32:30.040+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:32:30.061+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.417 seconds
+[2026-03-18T17:33:00.363+0000] {processor.py:161} INFO - Started process (PID=178) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:00.365+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:33:00.367+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:33:00.367+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:00.505+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:33:00.491+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 19, in <module>
+    s3_client.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  [Previous line repeated 943 more times]
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 16, in connect
+    load_dotenv()
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 356, in load_dotenv
+    return dotenv.set_as_environment_variables()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 92, in set_as_environment_variables
+    if not self.dict():
+           ^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 76, in dict
+    self._dict = OrderedDict(resolve_variables(raw_values, override=self.override))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 238, in resolve_variables
+    for (name, value) in values:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 84, in parse
+    for mapping in with_warn_for_invalid_lines(parse_stream(stream)):
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 26, in with_warn_for_invalid_lines
+    for mapping in mappings:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 173, in parse_stream
+    reader = Reader(stream)
+             ^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 65, in __init__
+    self.position = Position.start()
+                    ^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 47, in start
+    return cls(chars=0, line=1)
+           ^^^^^^^^^^^^^^^^^^^^
+RecursionError: maximum recursion depth exceeded
+[2026-03-18T17:33:00.512+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:00.530+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.176 seconds
+[2026-03-18T17:33:30.659+0000] {processor.py:161} INFO - Started process (PID=183) to work on /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:30.662+0000] {processor.py:830} INFO - Processing file /opt/airflow/dags/Apipeline/pipeline.py for tasks to queue
+[2026-03-18T17:33:30.666+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:33:30.665+0000] {dagbag.py:540} INFO - Filling up the DagBag from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:30.794+0000] {logging_mixin.py:188} INFO - [2026-03-18T17:33:30.780+0000] {dagbag.py:350} ERROR - Failed to import: /opt/airflow/dags/Apipeline/pipeline.py
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/dagbag.py", line 346, in parse
+    loader.exec_module(new_module)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/opt/airflow/dags/Apipeline/pipeline.py", line 19, in <module>
+    s3_client.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 21, in connect
+    self.connect()
+  [Previous line repeated 943 more times]
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 16, in connect
+    load_dotenv()
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 356, in load_dotenv
+    return dotenv.set_as_environment_variables()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 92, in set_as_environment_variables
+    if not self.dict():
+           ^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 76, in dict
+    self._dict = OrderedDict(resolve_variables(raw_values, override=self.override))
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 238, in resolve_variables
+    for (name, value) in values:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 84, in parse
+    for mapping in with_warn_for_invalid_lines(parse_stream(stream)):
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/main.py", line 26, in with_warn_for_invalid_lines
+    for mapping in mappings:
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 173, in parse_stream
+    reader = Reader(stream)
+             ^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 65, in __init__
+    self.position = Position.start()
+                    ^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/dotenv/parser.py", line 47, in start
+    return cls(chars=0, line=1)
+           ^^^^^^^^^^^^^^^^^^^^
+RecursionError: maximum recursion depth exceeded
+[2026-03-18T17:33:30.801+0000] {processor.py:842} WARNING - No viable dags retrieved from /opt/airflow/dags/Apipeline/pipeline.py
+[2026-03-18T17:33:30.814+0000] {processor.py:183} INFO - Processing /opt/airflow/dags/Apipeline/pipeline.py took 0.166 seconds

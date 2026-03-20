@@ -1,17 +1,18 @@
 name: bdm
 
 services:
-  minio:
-    image: quay.io/minio/minio
+  seaweedfs:
+    image: chrislusf/seaweedfs
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${ACCESS_KEY_ID}
-      MINIO_ROOT_PASSWORD: ${SECRET_ACCESS_KEY}
+      - ${SEAWEEDFS_MASTER_UI_ENDPOINT}:9333
+      - ${SEAWEEDFS_FILER_UI_ENDPOINT}:8888
+      - ${SEAWEEDFS_S3_ENDPOINT}:8333
+      - ${SEAWEEDFS_ADMIN_UI_ENDPOINT}:23646
+      - ${SEAWEEDFS_VOLUME_SERVER_UI_ENDPOINT}:9340
+    command: "mini -dir=/data"
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
+    env_file: .env
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -37,12 +38,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   kafdrop:
@@ -58,8 +57,54 @@ services:
       KAFKA_BROKERCONNECT: "kafka:29092"
       JVM_OPTS: "-Xms32M -Xmx128M"
 
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+
+  airflow-webserver:
+    image: apache/airflow:2.9.0
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _PIP_ADDITIONAL_REQUIREMENTS: kagglehub datasets
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+    command: webserver
+    env_file: .env
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.0
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      _PIP_ADDITIONAL_REQUIREMENTS: kagglehub datasets
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    command: scheduler
+    env_file: .env
+
 volumes:
-  minio-data:
+  seaweedfs-data:
+  postgres-db-volume:
 
 networks:
   broker-kafka:

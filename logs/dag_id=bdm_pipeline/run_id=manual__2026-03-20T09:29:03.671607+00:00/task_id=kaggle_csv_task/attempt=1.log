@@ -1,0 +1,82 @@
+[2026-03-20T09:29:06.738+0000] {local_task_job_runner.py:120} INFO - ::group::Pre task execution logs
+[2026-03-20T09:29:06.759+0000] {taskinstance.py:2073} INFO - Dependencies all met for dep_context=non-requeueable deps ti=<TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:29:03.671607+00:00 [queued]>
+[2026-03-20T09:29:06.765+0000] {taskinstance.py:2073} INFO - Dependencies all met for dep_context=requeueable deps ti=<TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:29:03.671607+00:00 [queued]>
+[2026-03-20T09:29:06.766+0000] {taskinstance.py:2303} INFO - Starting attempt 1 of 1
+[2026-03-20T09:29:06.780+0000] {taskinstance.py:2327} INFO - Executing <Task(PythonOperator): kaggle_csv_task> on 2026-03-20 09:29:03.671607+00:00
+[2026-03-20T09:29:06.813+0000] {logging_mixin.py:188} WARNING - /home/***/.local/lib/python3.12/site-packages/***/task/task_runner/standard_task_runner.py:61 DeprecationWarning: This process (pid=199) is multi-threaded, use of fork() may lead to deadlocks in the child.
+[2026-03-20T09:29:06.806+0000] {standard_task_runner.py:90} INFO - Running: ['***', 'tasks', 'run', 'bdm_pipeline', 'kaggle_csv_task', 'manual__2026-03-20T09:29:03.671607+00:00', '--job-id', '76', '--raw', '--subdir', 'DAGS_FOLDER/pipeline.py', '--cfg-path', '/tmp/tmpqk6tzmh4']
+[2026-03-20T09:29:06.825+0000] {standard_task_runner.py:63} INFO - Started process 200 to run task
+[2026-03-20T09:29:06.826+0000] {standard_task_runner.py:91} INFO - Job 76: Subtask kaggle_csv_task
+[2026-03-20T09:29:06.992+0000] {task_command.py:426} INFO - Running <TaskInstance: bdm_pipeline.kaggle_csv_task manual__2026-03-20T09:29:03.671607+00:00 [running]> on host ca1987c08340
+[2026-03-20T09:29:07.146+0000] {taskinstance.py:2644} INFO - Exporting env vars: AIRFLOW_CTX_DAG_OWNER='***' AIRFLOW_CTX_DAG_ID='bdm_pipeline' AIRFLOW_CTX_TASK_ID='kaggle_csv_task' AIRFLOW_CTX_EXECUTION_DATE='2026-03-20T09:29:03.671607+00:00' AIRFLOW_CTX_TRY_NUMBER='1' AIRFLOW_CTX_DAG_RUN_ID='manual__2026-03-20T09:29:03.671607+00:00'
+[2026-03-20T09:29:07.149+0000] {taskinstance.py:430} INFO - ::endgroup::
+[2026-03-20T09:29:08.134+0000] {logging_mixin.py:188} INFO - load_api_config
+[2026-03-20T09:29:08.135+0000] {logging_mixin.py:188} INFO - filter apis
+[2026-03-20T09:29:09.411+0000] {logging_mixin.py:188} WARNING - /opt/***/dags/Extractors/csv.py:31 DtypeWarning: Columns (3) have mixed types. Specify dtype option on import or set low_memory=False.
+[2026-03-20T09:29:09.755+0000] {taskinstance.py:441} INFO - ::group::Post task execution logs
+[2026-03-20T09:29:09.758+0000] {taskinstance.py:2890} ERROR - Task failed with exception
+Traceback (most recent call last):
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 465, in _execute_task
+    result = _execute_callable(context=context, **execute_callable_kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/taskinstance.py", line 432, in _execute_callable
+    return execute_callable(context=context, **execute_callable_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/models/baseoperator.py", line 400, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/python.py", line 235, in execute
+    return_value = self.execute_callable()
+                   ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/airflow/operators/python.py", line 252, in execute_callable
+    return self.python_callable(*self.op_args, **self.op_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/airflow/dags/pipeline.py", line 44, in task_csv
+    s3_client.load("temporal-landing-zone", doc, key)
+  File "/opt/airflow/dags/Clients/seaweedfs.py", line 26, in load
+    self.s3_client.put_object(
+  File "/home/airflow/.local/lib/python3.12/site-packages/botocore/client.py", line 553, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/botocore/client.py", line 962, in _make_api_call
+    request_dict = self._convert_to_request_dict(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/botocore/client.py", line 1036, in _convert_to_request_dict
+    request_dict = self._serializer.serialize_to_request(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/airflow/.local/lib/python3.12/site-packages/botocore/validate.py", line 381, in serialize_to_request
+    raise ParamValidationError(report=report.generate_report())
+botocore.exceptions.ParamValidationError: Parameter validation failed:
+Invalid type for parameter Body, value:                 case_id  district_id  ... longitude   latitude
+0           2015S005807         -1.0  ...       NaN        NaN
+1           2015S007685         10.0  ...       NaN        NaN
+2           2015S001364         10.0  ...       NaN        NaN
+3           2015S004325         10.0  ...       NaN        NaN
+4           2015S005540         10.0  ...       NaN        NaN
+...                 ...          ...  ...       ...        ...
+110650  2019S010046              4.0  ...  2.124247  41.389610
+110651  2019S010047             10.0  ...  2.180038  41.415427
+110652  2019S010048              2.0  ...  2.180128  41.394576
+110653  2019S010049              4.0  ...  2.129436  41.385974
+110654  2019S010050              2.0  ...  2.177177  41.403880
+
+[110655 rows x 27 columns], type: <class 'pandas.core.frame.DataFrame'>, valid types: <class 'bytes'>, <class 'bytearray'>, file-like object
+[2026-03-20T09:29:09.795+0000] {taskinstance.py:1205} INFO - Marking task as FAILED. dag_id=bdm_pipeline, task_id=kaggle_csv_task, execution_date=20260320T092903, start_date=20260320T092906, end_date=20260320T092909
+[2026-03-20T09:29:09.809+0000] {standard_task_runner.py:110} ERROR - Failed to execute job 76 for task kaggle_csv_task (Parameter validation failed:
+Invalid type for parameter Body, value:                 case_id  district_id  ... longitude   latitude
+0           2015S005807         -1.0  ...       NaN        NaN
+1           2015S007685         10.0  ...       NaN        NaN
+2           2015S001364         10.0  ...       NaN        NaN
+3           2015S004325         10.0  ...       NaN        NaN
+4           2015S005540         10.0  ...       NaN        NaN
+...                 ...          ...  ...       ...        ...
+110650  2019S010046              4.0  ...  2.124247  41.389610
+110651  2019S010047             10.0  ...  2.180038  41.415427
+110652  2019S010048              2.0  ...  2.180128  41.394576
+110653  2019S010049              4.0  ...  2.129436  41.385974
+110654  2019S010050              2.0  ...  2.177177  41.403880
+
+[110655 rows x 27 columns], type: <class 'pandas.core.frame.DataFrame'>, valid types: <class 'bytes'>, <class 'bytearray'>, file-like object; 200)
+[2026-03-20T09:29:09.831+0000] {local_task_job_runner.py:240} INFO - Task exited with return code 1
+[2026-03-20T09:29:09.874+0000] {taskinstance.py:3482} INFO - 0 downstream tasks scheduled from follow-on schedule check
+[2026-03-20T09:29:09.876+0000] {local_task_job_runner.py:222} INFO - ::endgroup::
