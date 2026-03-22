@@ -4,5 +4,6 @@ seaweedfs/.*
 seaweedfs/data
 
 logs/*
+services/airflow/logs/*
 
 !.gitignore
