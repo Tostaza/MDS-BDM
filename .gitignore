@@ -3,4 +3,6 @@
 seaweedfs/.*
 seaweedfs/data
 
+logs/*
+
 !.gitignore

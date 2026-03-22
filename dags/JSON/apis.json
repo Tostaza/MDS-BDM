@@ -1,0 +1,112 @@
+{
+    "apis": [
+        {
+            "source": "KaggleHub",
+            "data_type": "csv",
+            "api": "emmanuelfwerr/barcelona-car-accidents"
+        },
+        {
+            "source": "KaggleHub",
+            "data_type": "csv",
+            "api": "jessicarippman/barcelona-car-accidents-dataset"
+        },
+        {
+            "source": "KaggleHub",
+            "data_type": "csv",
+            "api": "falloufall21/barcelona-car-accident-2023"
+        },
+        {
+            "source": "KaggleHub",
+            "data_type": "csv",
+            "api": "subho117/rainfall-prediction-using-machine-learning"
+        },
+        {
+            "source": "HuggingFace",
+            "data_type": "csv",
+            "api": "kanishka089/RainPrediction"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "xml",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "json",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=d55b67dd-7078-4b3d-a557-d3363230083d"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "json",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=c97072a3-3619-4547-84dd-f1999d2a3fec"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/035_RSS.xml"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "json",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=796504f6-7602-41a7-82a9-d3bd47e68dee"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "json",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=066d46b1-25be-4f08-b0e0-5a233714bda2"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "json",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/api/action/datastore_search?resource_id=8e7388ee-ffbd-446e-a8ad-c427a99da48d"
+        },
+        {
+            "source": "OpenData",
+            "data_type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
+        },
+        {
+            "source": "real_time",
+            "type": "xml",
+            "data_type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
+        },
+
+        {
+            "source": "real_time",
+            "type": "TomTom",
+            "data_type": "real_time",
+            "api": "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+        },
+        {
+            "source": "real_time",
+            "type": "Google",
+            "data_type": "real_time",
+            "api": "https://routes.googleapis.com/directions/v2:computeRoutes"
+        },
+        {
+            "source": "real_time",
+            "type": "webApi",
+            "data_type": "real_time",
+            "api": "https://www.gencat.cat/transit/opendata/cameres.xml"
+        },
+        {
+            "source": "real_time",
+            "type": "python_code",
+            "data_type": "real_time",
+            "api": "sensorIoT"
+        } ,
+        {
+            "source": "real_time",
+            "data_type": "xml",
+            "type": "xml",
+            "api": "https://www.gencat.cat/transit/opendata/035_RSS.xml"
+        },
+        {
+            "source": "real_time",
+            "data_type": "xml",
+            "type": "xml",
+            "api": "https://opendata-ajuntament.barcelona.cat/data/dataset/425f3411-963d-4ccc-a8de-c9422d923378/resource/2f308e87-8bb1-4145-97f2-3dcce62623b9/download"
+        }
+    ]
+}

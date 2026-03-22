@@ -1,0 +1,75 @@
+    {
+        "points": [
+        {"id": "bcn_001", "name": "Ronda Litoral 1", "lat": 41.380, "lon": 2.180},
+        {"id": "bcn_002", "name": "Ronda Litoral 2", "lat": 41.385, "lon": 2.190},
+        {"id": "bcn_003", "name": "Ronda Litoral 3", "lat": 41.390, "lon": 2.200},
+    
+        {"id": "bcn_004", "name": "Ronda de Dalt 1", "lat": 41.441, "lon": 2.134},
+        {"id": "bcn_005", "name": "Ronda de Dalt 2", "lat": 41.445, "lon": 2.120},
+        {"id": "bcn_006", "name": "Ronda de Dalt 3", "lat": 41.450, "lon": 2.110},
+    
+        {"id": "bcn_007", "name": "Diagonal 1", "lat": 41.393, "lon": 2.162},
+        {"id": "bcn_008", "name": "Diagonal 2", "lat": 41.395, "lon": 2.150},
+        {"id": "bcn_009", "name": "Diagonal 3", "lat": 41.398, "lon": 2.140},
+        {"id": "bcn_010", "name": "Diagonal 4", "lat": 41.400, "lon": 2.130},
+    
+        {"id": "bcn_011", "name": "Gran Via 1", "lat": 41.387, "lon": 2.149},
+        {"id": "bcn_012", "name": "Gran Via 2", "lat": 41.385, "lon": 2.160},
+        {"id": "bcn_013", "name": "Gran Via 3", "lat": 41.383, "lon": 2.170},
+    
+        {"id": "bcn_014", "name": "Meridiana 1", "lat": 41.429, "lon": 2.183},
+        {"id": "bcn_015", "name": "Meridiana 2", "lat": 41.435, "lon": 2.180},
+        {"id": "bcn_016", "name": "Meridiana 3", "lat": 41.440, "lon": 2.175},
+    
+        {"id": "bcn_017", "name": "Via Laietana 1", "lat": 41.385, "lon": 2.177},
+        {"id": "bcn_018", "name": "Via Laietana 2", "lat": 41.387, "lon": 2.175},
+    
+        {"id": "bcn_019", "name": "Passeig de Gracia 1", "lat": 41.392, "lon": 2.165},
+        {"id": "bcn_020", "name": "Passeig de Gracia 2", "lat": 41.395, "lon": 2.160},
+    
+        {"id": "bcn_021", "name": "Placa Catalunya", "lat": 41.387, "lon": 2.170},
+        {"id": "bcn_022", "name": "Placa Espanya", "lat": 41.375, "lon": 2.149},
+    
+        {"id": "bcn_023", "name": "Sants", "lat": 41.379, "lon": 2.140},
+        {"id": "bcn_024", "name": "Sagrada Familia", "lat": 41.403, "lon": 2.174},
+    
+        {"id": "bcn_025", "name": "Hospital Clinic", "lat": 41.385, "lon": 2.155},
+        {"id": "bcn_026", "name": "Camp Nou", "lat": 41.380, "lon": 2.122},
+    
+        {"id": "bcn_027", "name": "Forum", "lat": 41.410, "lon": 2.220},
+        {"id": "bcn_028", "name": "Poblenou", "lat": 41.405, "lon": 2.200},
+    
+        {"id": "bcn_029", "name": "Clot", "lat": 41.410, "lon": 2.190},
+        {"id": "bcn_030", "name": "Glories", "lat": 41.403, "lon": 2.186},
+    
+        {"id": "bcn_031", "name": "Sarrià", "lat": 41.398, "lon": 2.121},
+        {"id": "bcn_032", "name": "Les Corts", "lat": 41.388, "lon": 2.130},
+    
+        {"id": "bcn_033", "name": "Horta", "lat": 41.430, "lon": 2.160},
+        {"id": "bcn_034", "name": "Nou Barris", "lat": 41.445, "lon": 2.180},
+    
+        {"id": "bcn_035", "name": "Montjuic", "lat": 41.363, "lon": 2.165},
+        {"id": "bcn_036", "name": "Port Vell", "lat": 41.375, "lon": 2.180},
+    
+        {"id": "bcn_037", "name": "Barceloneta", "lat": 41.380, "lon": 2.190},
+        {"id": "bcn_038", "name": "El Born", "lat": 41.385, "lon": 2.180},
+    
+        {"id": "bcn_039", "name": "Eixample Nord", "lat": 41.400, "lon": 2.170},
+        {"id": "bcn_040", "name": "Eixample Sud", "lat": 41.380, "lon": 2.160},
+    
+        {"id": "bcn_041", "name": "Sant Andreu", "lat": 41.435, "lon": 2.190},
+        {"id": "bcn_042", "name": "Sant Marti", "lat": 41.410, "lon": 2.200},
+    
+        {"id": "bcn_043", "name": "Zona Franca", "lat": 41.350, "lon": 2.140},
+        {"id": "bcn_044", "name": "El Prat Access", "lat": 41.330, "lon": 2.100},
+    
+        {"id": "bcn_045", "name": "Diagonal Mar", "lat": 41.410, "lon": 2.210},
+        {"id": "bcn_046", "name": "Universitat", "lat": 41.385, "lon": 2.165},
+    
+        {"id": "bcn_047", "name": "Arc de Triomf", "lat": 41.392, "lon": 2.180},
+        {"id": "bcn_048", "name": "Tetuan", "lat": 41.394, "lon": 2.175},
+    
+        {"id": "bcn_049", "name": "Paral·lel", "lat": 41.375, "lon": 2.165},
+        {"id": "bcn_050", "name": "Drassanes", "lat": 41.375, "lon": 2.175}
+        ]
+    }
