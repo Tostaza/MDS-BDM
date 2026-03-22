@@ -3,7 +3,7 @@ services:
     image: apache/kafka:latest
     container_name: kafka
     ports:
-      - '9092:9092'
+      - '${KAFKA_HOST_LISTENER_PORT}:9092'
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: 'broker,controller'
@@ -30,6 +30,14 @@ services:
       - kafka-data:/var/lib/kafka/data
 
     env_file: .env
+
+  # kafka-connect:
+  #   image: apache/kafka:latest
+  #   container_name: kafka-connect
+  #   ports:
+  #     - '${KAFKA_HOST_LISTENER_PORT}:9092'
+  #   environment:
+  #     KAFKA_NODE_ID: 1  
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
