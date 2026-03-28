@@ -4,58 +4,49 @@ from airflow.models import Variable
 from datetime import datetime, timedelta
 import feedparser
 import json
-from kafka import KafkaProducer
-import boto3 # Librería estándar para interactuar con MinIO/S3
+# from kafka import KafkaProducer
+import boto3
+import os
 
-# 1. Definir los argumentos por defecto del DAG
+
 default_args = {
-    'owner': 'bdm_student',
+    'owner': 'upc',
     'depends_on_past': False,
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
+    'retries': 3,
     'retry_delay': timedelta(minutes=1),
 }
 
-
-def fetch(url: str) -> dict:
-    feed = feedparser.parse(url)
+# def fetch(url: str) -> dict:
+#     feed = feedparser.parse(url)
     
-    if feed.bozo:
-        raise Exception(f"Error while parsing feed: {feed.bozo_exception}")
+#     if feed.bozo:
+#         raise Exception(f"Error while parsing feed: {feed.bozo_exception}")
     
-    return feed.entries
+#     return feed.entries
 
 
-def fetch_and_ingest_rss(**kwargs):
-    last_processed_date = Variable.get("transit_last_timestamp", default_var="2000-01-01T00:00:00Z")
+def fetch_and_ingest_rss(source_id, variable_name, rss_url, s3_client, bucket):
+    latest_post_timestamp = Variable.get(f"{source_id}_{variable_name}", default_var="2000-01-01T00:00:00Z")
     
-    rss_url = "https://nitter.net/transit/rss"
     feed = feedparser.parse(rss_url)
     
-    nuevos_posts = []
-    latest_date_in_batch = last_processed_date
+    new_posts = []
+    latest_post_timestamp_in_batch = latest_post_timestamp
     
-    # Filtrar los posts nuevos
     for entry in feed.entries:
         post_date = entry.published
         
-        if post_date > last_processed_date:
-            nuevos_posts.append({
-                "id": entry.id,
-                "text": entry.title,
-                "link": entry.link,
-                "published_at": post_date
-            })
-            # Actualizar cuál es la fecha más reciente vista en este batch
-            if post_date > latest_date_in_batch:
-                latest_date_in_batch = post_date
-                
-    if not nuevos_posts:
-        print("No hay nuevos tweets para procesar.")
-        return
+        if post_date > latest_post_timestamp:
+            new_posts.append(entry)
 
-    print(f"Se han encontrado {len(nuevos_posts)} nuevos tweets.")
+            if post_date > latest_post_timestamp_in_batch:
+                latest_post_timestamp_in_batch = post_date
+                
+    if not new_posts:
+        print("New posts not found")
+        return
+    else:
+        print(f"{len(new_posts)} new posts found")
 
     # --- INYECTAR A KAFKA (Hot Path) ---
     # producer = KafkaProducer(bootstrap_servers=['kafka:9092'], 
@@ -64,35 +55,43 @@ def fetch_and_ingest_rss(**kwargs):
     #     producer.send('transit_tweets_topic', post)
     # producer.flush()
 
-    # --- GUARDAR EN MINIO / LANDING ZONE (Cold Path) ---
-    # Recuerda que en la Landing Zone los datos se extraen en su forma cruda y se cargan sin transformaciones significativas[cite: 37].
-    # s3_client = boto3.client('s3', endpoint_url='http://minio:9000', 
-    #                          aws_access_key_id='TU_USUARIO', 
-    #                          aws_secret_access_key='TU_CONTRASEÑA')
-    # file_name = f"transit_tweets_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-    # s3_client.put_object(Bucket='landing-zone', Key=f'transit/{file_name}', 
-    #                      Body=json.dumps(nuevos_posts))
+    for p in new_posts:
+        key = f"{source_id}_post_{p.published}.json"
+        s3_client.put_object(Bucket=bucket, Key=key, Body=json.dumps(p))
 
-    # Actualizar la variable para la próxima ejecución de Airflow
-    Variable.set("transit_last_timestamp", latest_date_in_batch)
-    print(f"Variable actualizada a: {latest_date_in_batch}")
+    Variable.set(f"{source_id}_{variable_name}", latest_post_timestamp_in_batch)
 
 
 with DAG(
     'transit_rss_ingestion',
     default_args=default_args,
-    description='Ingesta de micro-batches desde Nitter RSS para Transit',
-    schedule=None, # Change it for more frequency
+    description='Micro-batching ingestion of RSS feed posts from Transit Twitter account',
+    schedule="*/5 * * * *", # Frequency: Every 5 minutes
     start_date=datetime(2023, 1, 1),
     catchup=False,
-    tags=['bdm', 'ingestion', 'twitter'],
+    tags=['twitter', "social_media"],
 ) as dag:
 
-    # 4. Definir la tarea
+    # TODO: USE ENV VARIABLES TO PASS AWS CREDENTIALS
+
+    s3_client = boto3.client(
+        "s3",
+        aws_access_key_id= "admin", # os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key= "admin", # os.getenv("AWS_SECRET_ACCESS_KEY"),
+        endpoint_url= "http://seaweedfs:8333" # f"http://{os.getenv("S3_ENDPOINT")}"
+    )
+
     ingest_task = PythonOperator(
         task_id='fetch_and_ingest_rss_task',
         python_callable=fetch_and_ingest_rss,
-        # provide_context=True
+        op_kwargs={
+            'source_id': "transit",
+            'variable_name': "last_post_timestamp",
+            'rss_url': "https://nitter.net/transit/rss",
+            #'kafka_topic': "transit_tweets_topic",
+            's3_client': s3_client,
+            'bucket': "landing-zone"
+        }
     )
 
     ingest_task
