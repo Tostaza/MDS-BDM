@@ -26,15 +26,20 @@ default_args = {
 
 
 def fetch_and_ingest_rss(source_id, variable_name, rss_url, s3_client, bucket):
-    latest_post_timestamp = Variable.get(f"{source_id}_{variable_name}", default_var="2000-01-01T00:00:00Z")
+    from datetime import datetime
+    from email.utils import parsedate_to_datetime
+
+    latest_post_timestamp = datetime.fromisoformat(Variable.get(f"{source_id}_{variable_name}", default_var="2026-03-21T00:00:00+00:00"))
+    
+    print(f"latest_post_timestamp: {latest_post_timestamp}")
     
     feed = feedparser.parse(rss_url)
-    
+
     new_posts = []
     latest_post_timestamp_in_batch = latest_post_timestamp
     
     for entry in feed.entries:
-        post_date = entry.published
+        post_date = parsedate_to_datetime(entry.published)
         
         if post_date > latest_post_timestamp:
             new_posts.append(entry)
@@ -56,10 +61,13 @@ def fetch_and_ingest_rss(source_id, variable_name, rss_url, s3_client, bucket):
     # producer.flush()
 
     for p in new_posts:
-        key = f"{source_id}_post_{p.published}.json"
+        dt = parsedate_to_datetime(p.published)
+        timestamp_suffix = dt.isoformat()
+
+        key = f"{source_id}/post_{timestamp_suffix}.json"
         s3_client.put_object(Bucket=bucket, Key=key, Body=json.dumps(p))
 
-    Variable.set(f"{source_id}_{variable_name}", latest_post_timestamp_in_batch)
+    Variable.set(f"{source_id}_{variable_name}", latest_post_timestamp_in_batch.isoformat())
 
 
 with DAG(
