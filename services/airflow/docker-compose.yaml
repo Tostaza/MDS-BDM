@@ -32,8 +32,8 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.2}
-  build: .
+  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.2}
+  # build: .
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:
@@ -164,6 +164,13 @@ services:
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
       DUMB_INIT_SETSID: "0"
+
+      # Custom variables needed by the dags
+      AIRFLOW_VAR_AEMET_API_KEY: ${AEMET_API_KEY}
+      AIRFLOW_VAR_AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AIRFLOW_VAR_AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AIRFLOW_VAR_S3_ENDPOINT: ${S3_ENDPOINT}
+
     restart: always
     depends_on:
       <<: *airflow-common-depends-on
