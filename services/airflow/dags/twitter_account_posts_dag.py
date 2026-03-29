@@ -77,7 +77,7 @@ with DAG(
     schedule="*/5 * * * *", # Frequency: Every 5 minutes
     start_date=datetime(2023, 1, 1),
     catchup=False,
-    tags=['twitter', "social_media"],
+    tags=['twitter', "social_media", 'ingestion'],
 ) as dag:
 
     # TODO: USE ENV VARIABLES TO PASS AWS CREDENTIALS
