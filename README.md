@@ -55,9 +55,9 @@ The above table classifies the datasources according to the type of data flow:
 
 ## 🛠️ Technologies Used
 
-- Technology / Language 1
-- Technology / Framework 2
-- Tool 3
+- Airflow
+- SeaweedFS (S3-compatible object storage)
+- Kafka
 
 ---
 
@@ -66,4 +66,19 @@ The above table classifies the datasources according to the type of data flow:
 1. Clone the repository:
    ```bash
    git clone https://github.com/your-username/project-name.git
+   ```
+
+2. Build airflow image:
+   ```bash
+   docker build . -f docker/airflow/Dockerfile -t bdm-airflow:latest
+   ```
+
+3. Setup env variables:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Run stack:
+   ```bash
+   docker compose up -d
    ```
