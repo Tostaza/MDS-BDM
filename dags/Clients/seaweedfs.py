@@ -42,9 +42,10 @@ class Seaweedfs(Client):
         )
         
     def load_json(self, bucket, doc, key):
+        new_key = "/real-time"+key
         self.s3_client.put_object(
             Bucket=bucket,
-            Key=key,
+            Key=new_key,
             Body=json.dumps(doc).encode("utf-8")
         )
 
@@ -64,9 +65,8 @@ class Seaweedfs(Client):
         return all_objs
     
     def load_real_time(self, bucket, doc, key):
-        bucket_real_time = bucket + "/real_time"
-        self.create_bucket(bucket_real_time)
-        self.load_json(bucket_real_time)
+        self.create_bucket(bucket)
+        self.load_json(bucket, doc, key)
         
         
     def create_bucket(self, name_bucket):
