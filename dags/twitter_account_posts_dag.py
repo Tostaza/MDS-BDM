@@ -93,7 +93,7 @@ with DAG(
         task_id='fetch_and_ingest_rss_task',
         python_callable=fetch_and_ingest_rss,
         op_kwargs={
-            'source_id': "transit",
+            'source_id': "transit_posts",
             'variable_name': "last_post_timestamp",
             'rss_url': "https://nitter.net/transit/rss",
             #'kafka_topic': "transit_tweets_topic",
