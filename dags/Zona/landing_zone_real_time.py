@@ -7,8 +7,7 @@ from airflow.operators.python import PythonOperator
 from Extractors.realTime import ExtractorRealTime
 from Clients.seaweedfs import Seaweedfs
 
-BASE_DIR = os.path.dirname(__file__)
-RUTA_JSON = os.path.join(BASE_DIR, "..", "JSON", "apis.json")
+RUTA_JSON = os.path.join(os.path.dirname(__file__), "..", "JSON", "apis.json")
 
 def load_api_config():
     print("load_api_config")

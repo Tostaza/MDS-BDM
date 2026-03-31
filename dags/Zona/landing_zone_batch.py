@@ -12,8 +12,7 @@ from Clients.client import Client
 from Clients.seaweedfs import Seaweedfs
 
 
-BASE_DIR = os.path.dirname(__file__)
-RUTA_JSON = os.path.join(BASE_DIR, "JSON", "apis.json")
+RUTA_JSON = os.path.join(os.path.dirname(__file__), "..", "JSON", "apis.json")
 
 
 def load_api_config():

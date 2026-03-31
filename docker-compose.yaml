@@ -1,6 +1,7 @@
 name: bdm
 
 services:
+  # ------------------- STORAGE -------------------
   seaweedfs:
     image: chrislusf/seaweedfs
     ports:
@@ -14,6 +15,7 @@ services:
       - seaweedfs-data:/data
     env_file: .env
 
+  # ------------------- KAFKA -------------------
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -21,9 +23,6 @@ services:
       - broker-kafka
     ports:
       - "2181:2181"
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -55,8 +54,8 @@ services:
       - "9002:9000"
     environment:
       KAFKA_BROKERCONNECT: "kafka:29092"
-      JVM_OPTS: "-Xms32M -Xmx128M"
 
+  # ------------------- POSTGRES -------------------
   postgres:
     image: postgres:13
     environment:
@@ -66,65 +65,65 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
 
+  # ------------------- AIRFLOW INIT -------------------
   airflow-init:
     image: apache/airflow:2.9.0
     depends_on:
       - postgres
+    env_file:
+      - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__FERNET_KEY: "clave_segura_123"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     entrypoint: /bin/bash
     command: >
-      -c "
-      airflow db init &&
-      airflow users create
-        --username admin
-        --password admin
-        --firstname admin
-        --lastname admin
-        --role Admin
-        --email admin@example.com
-      "
+      -c "pip install feedparser kagglehub datasets &&
+          airflow db migrate &&
+          airflow users create --username admin --password admin --firstname admin --lastname admin --role Admin --email admin@example.com"
     volumes:
       - ./dags:/opt/airflow/dags
 
+  # ------------------- AIRFLOW WEB -------------------
   airflow-webserver:
     image: apache/airflow:2.9.0
     depends_on:
       - postgres
+    env_file:
+      - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__FERNET_KEY: "clave_segura_123"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      _PIP_ADDITIONAL_REQUIREMENTS: kagglehub datasets feedparser
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
     ports:
       - "8080:8080"
-    command: webserver
-    env_file: .env
+    command: >
+      bash -c "pip install feedparser kagglehub datasets && airflow webserver"
 
+  # ------------------- AIRFLOW SCHEDULER -------------------
   airflow-scheduler:
     image: apache/airflow:2.9.0
     depends_on:
       - postgres
+    env_file:
+      - .env
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__FERNET_KEY: "clave_segura_123"
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-      _PIP_ADDITIONAL_REQUIREMENTS: kagglehub datasets feedparser
     volumes:
       - ./dags:/opt/airflow/dags
       - ./logs:/opt/airflow/logs
       - ./plugins:/opt/airflow/plugins
-    command: scheduler
-    env_file: .env
+    command: >
+      bash -c "pip install feedparser kagglehub datasets && airflow scheduler"
 
 volumes:
   seaweedfs-data:

@@ -1,6 +1,0 @@
-pandas==3.0.1
-boto3==1.42.63
-dotenv==0.9.9
-atproto==0.0.65
-kafka-python==2.3.0
-feedparser==6.0.12

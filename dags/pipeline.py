@@ -1,8 +1,6 @@
 from airflow import DAG
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime
-from Zona.landing_zone_batch import *
-from Zona.landing_zone_real_time import *
 
 with DAG(
     dag_id="pipeline_general",

@@ -34,7 +34,6 @@ class ExtractorRealTime(Extractor):
         except:
             return "unknown"
         
-        
     def calculate_delay(self, route):
         try:
             duration = float(route.get("duration", "0s").replace("s", ""))
@@ -47,32 +46,26 @@ class ExtractorRealTime(Extractor):
         pass
 
     def extract_real_time_data(self, api_endpoint, type):
-
         if type == "TomTom":
             return self.extract_data_Tom_Tom(api_endpoint)
-
         elif type == "Google":
             return self.extract_data_google(api_endpoint)
-
         elif type == 'xml':
             extractor = ExtractorXML()
             return extractor.extract_data(api_endpoint)
-
         elif type == "json":
             extractor = ExtractorJSON()
             return extractor.extract_data(api_endpoint)
-
         elif type == "python_code":
             return self.run_python_producer()
+        return None, None
 
 
     def run_python_producer(self):
         script_path = os.path.join(os.path.dirname(__file__), "..", "IoT", "sensor_bcn.py")
-
         try:
             subprocess.Popen(["python", script_path])
             return None, "producer_started"
-
         except Exception as e:
             print(f"Error launching producer: {e}")
             raise
