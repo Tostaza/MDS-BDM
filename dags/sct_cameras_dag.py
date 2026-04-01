@@ -16,8 +16,8 @@ default_args = {
     'retry_delay': timedelta(minutes=2),
 }
 
-ROADS = ["B-10", "B-20", "Ronda del Mig", "B-23", "C-31", "C-32", "C-58"]   
-CITIES = ["BARCELONA", "L'HOSPITALET DE LLOBREGAT", "BADALONA", "SANT ADRIÀ DE BESÒS", "MONTGAT", "SANT BOI"]
+ROADS = [] # ["B-10", "B-20", "Ronda del Mig", "B-23", "C-31", "C-32", "C-58"]   
+CITIES = ["barcelona", "l'hospitalet de llobregat", "badalona", "sant adrià de besòs", "montgat", "sant boi"]
 
 BUCKET = "landing-zone"
 
@@ -36,28 +36,38 @@ def traffic_cameras_dag():
         response = requests.get(url, timeout=20)
         response.raise_for_status()
         
+        namespaces = {
+            "wfs": "http://www.opengis.net/wfs",
+            "gml": "http://www.opengis.net/gml", 
+            "cite": "http://www.opengeospatial.net/cite",
+            "xsi": "http://www.w3.org/2001/XMLSchema-instance"
+        }
+        for prefix, uri in namespaces.items():
+            ET.register_namespace(prefix, uri)
         root = ET.fromstring(response.text)
         ns = {"gml": "http://www.opengis.net/gml", "cite": "http://www.opengeospatial.net/cite"}
         
-        rows = []
-        for cam in root.findall(".//gml:featureMember/cite:cameres", ns):
-            rows.append({
-                "carretera": cam.findtext("cite:carretera", default="", namespaces=ns).strip(),
-                "municipi": cam.findtext("cite:municipi", default="", namespaces=ns).strip(),
-                "link": cam.findtext("cite:link", default="", namespaces=ns).strip()
-            })
-        
-        df = pd.DataFrame(rows)
-        df_filtered = df
-        if CITIES:
-            df_filtered = df[df['municipi'].isin(CITIES)]
-        if ROADS:
-            df_filtered = df_filtered[df_filtered['carretera'].isin(ROADS)]
-        
-        return df_filtered.to_dict(orient='records')
+        for feature in root.findall("gml:featureMember", ns):
+            cam = feature.find("cite:cameres", ns)
+            if cam is not None:
+                carretera = cam.findtext("cite:carretera", default="", namespaces=ns).strip()
+                municipi = cam.findtext("cite:municipi", default="", namespaces=ns).strip()
+                link = cam.findtext("cite:link", default="", namespaces=ns).strip()
+                
+                keep = True
+                if CITIES and municipi.lower() not in CITIES:
+                    keep = False
+                if ROADS and carretera.lower() not in ROADS:
+                    keep = False
+                
+                if not keep:
+                    root.remove(feature)
+
+        xml_filtered = ET.tostring(root, encoding='utf-8', xml_declaration=True).decode('utf-8')
+        return xml_filtered
 
     @task
-    def ingest_images_to_minio(camera_list, bucket: str):
+    def ingest_images(xml, bucket: str):
         import boto3
         
         aws_access_key_id = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
@@ -69,22 +79,31 @@ def traffic_cameras_dag():
             aws_secret_access_key= aws_secret_access_key,
             endpoint_url= endpoint_url
         )
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        root = ET.fromstring(xml)   
+        ns = {"gml": "http://www.opengis.net/gml", "cite": "http://www.opengeospatial.net/cite"}
         
-        for i, cam in enumerate(camera_list):
-            try:
-                img_data = requests.get(cam['link'], timeout=15).content
-                ext = os.path.splitext(urlparse(cam['link']).path)[1] or ".gif"
-                object_name = f"traffic_cameras/{timestamp}/{cam['carretera']}_{cam['municipi']}_{i}{ext}"
+        for i, feature in enumerate(root.findall("gml:featureMember", ns)):
+            cam = feature.find("cite:cameres", ns)
+            if cam is not None:
+                carretera = cam.findtext("cite:carretera", default="", namespaces=ns).strip().lower()
+                municipi = cam.findtext("cite:municipi", default="", namespaces=ns).strip().lower()
+                link = cam.findtext("cite:link", default="", namespaces=ns).strip()
+                
+                try:
+                    img_data = requests.get(link, timeout=15).content
+                    ext = os.path.splitext(urlparse(link).path)[1] or ".gif"
+                    object_name = f"traffic_cameras/{timestamp}/{carretera}_{municipi}_{i}{ext}"
 
-                s3_client.put_object(Bucket=bucket, Key=object_name, Body=img_data)
-                print(f"Uploaded {len(camera_list)} images to {bucket}.")
-            except Exception as e:
-                print(f"Error con {cam['link']}: {e}")
+                    s3_client.put_object(Bucket=bucket, Key=object_name, Body=img_data)
+                except Exception as e:
+                    print(f"Error with camera {link}: {e}")
 
-    
+        s3_client.put_object(Bucket=bucket, Key=f"traffic_cameras/{timestamp}/metadata.xml", Body=xml)
+        print(f"Uploaded 1 metadata file and {i+1} images to {bucket}.")
+            
     metadata = get_camera_metadata()
-    ingest_images_to_minio(camera_list=metadata, bucket=BUCKET)
+    ingest_images(xml=metadata, bucket=BUCKET)
 
 traffic_cameras_dag()
