@@ -55,9 +55,11 @@ The above table classifies the datasources according to the type of data flow:
 
 ## 🛠️ Technologies Used
 
-- Airflow
-- SeaweedFS (S3-compatible object storage)
-- Kafka
+- Airflow: Workflow orchestrator
+- SeaweedFS: S3-compatible object storage
+- Kafka: Message broker
+- Spark: Distributed data processing
+- Delta Lake: Open Table Format
 
 ---
 
