@@ -4,6 +4,7 @@ import requests
 from datetime import datetime, timedelta
 from airflow.models import Variable
 from airflow.decorators import dag, task
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 # Argumentos por defecto para el DAG
 default_args = {
@@ -91,8 +92,16 @@ def aemet_ingestion_workflow():
 
         print(f"Data stored for city {weather_data['id']}")
 
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_temporal_to_persistent',
+        trigger_dag_id='aemet_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
     cities_codes = list(CITIES.values()) # This is important!
     cities_data = fetch_weather_predictions_hourly.expand(city_code=cities_codes)
-    store_weather_data.partial(bucket=BUCKET).expand(weather_data=cities_data)
+    stored_data =store_weather_data.partial(bucket=BUCKET).expand(weather_data=cities_data)
+
+    stored_data >> trigger_temporal_to_persistent_task
 
 aemet_ingestion_workflow()
