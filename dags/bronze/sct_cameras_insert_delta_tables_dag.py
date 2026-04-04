@@ -10,7 +10,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='traffic_cameras_bronze_ingestion',
+    dag_id='sct_cameras_insert_delta_tables_dag',
     default_args=default_args,
     description='Moves raw files and catalogs XML and image paths in Delta Bronze tables',
     schedule=None, 
@@ -73,7 +73,7 @@ def traffic_cameras_bronze_pipeline():
                     metadata_xml.append({"timestamp": timestamp, "xml_content": xml_content})
                 
                 else:
-                    new_key = f"{PERSISTENT_PREFIX}/images/raw/{filename}"
+                    new_key = f"{PERSISTENT_PREFIX}/images/raw/{timestamp}/{filename}"
                     s3_client.copy_object(
                         CopySource={'Bucket': TEMPORAL_BUCKET, 'Key': old_key},
                         Bucket=PERSISTENT_BUCKET, Key=new_key

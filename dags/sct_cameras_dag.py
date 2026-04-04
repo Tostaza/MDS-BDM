@@ -7,8 +7,8 @@ import xml.etree.ElementTree as ET
 import boto3
 import os
 from urllib.parse import urlparse
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
-# Argumentos base
 default_args = {
     'owner': 'bdm_expert',
     'start_date': datetime(2026, 3, 31),
@@ -102,8 +102,15 @@ def traffic_cameras_dag():
 
         s3_client.put_object(Bucket=bucket, Key=f"traffic_cameras/{timestamp}/metadata.xml", Body=xml)
         print(f"Uploaded 1 metadata file and {i+1} images to {bucket}.")
-            
+
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_temporal_to_persistent',
+        trigger_dag_id='sct_cameras_insert_delta_tables_dag',
+        wait_for_completion=False
+    ) 
+
     metadata = get_camera_metadata()
-    ingest_images(xml=metadata, bucket=BUCKET)
+    ingestion_task = ingest_images(xml=metadata, bucket=BUCKET)
+    ingestion_task >> trigger_temporal_to_persistent_task
 
 traffic_cameras_dag()
