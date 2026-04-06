@@ -10,7 +10,8 @@ from io import BytesIO, StringIO
 @dataclass
 class Seaweedfs(Client):
     
-    s3_client: Client = None
+    s3_client: boto3.client = None
+
     def connect(self):
         self.aws_key = os.environ.get("AWS_ACCESS_KEY_ID")
         self.aws_password = os.environ.get("AWS_SECRET_ACCESS_KEY")
@@ -22,6 +23,40 @@ class Seaweedfs(Client):
             endpoint_url=self.api_endpoint,
         )
     
+    def upload_object(self, bucket, key, obj_bytes):
+        if self.s3_client is None:
+            self.connect()
+
+        self.s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=obj_bytes,
+        )
+
+    def upload_file(self, bucket, key, file_path):
+        if self.s3_client is None:
+            self.connect()
+        self.s3_client.upload_file(
+            Filename=file_path,
+            Bucket=bucket,
+            Key=key
+        )     
+
+    def upload_dataframe(self, bucket, key, df):
+        if self.s3_client is None:
+            self.connect()
+
+        buffer = io.StringIO()
+        df.to_csv(buffer, index=False)    
+        self.s3_client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=buffer.getvalue(),
+        )
+
+
+# ---
+
     def load_xml(self, bucket, json_bytes, key):
         if self.s3_client is None:
             self.connect()

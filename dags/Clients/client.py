@@ -12,9 +12,13 @@ class Client(ABC):
     api_endpoint: str = None
     
     @abstractmethod
-    def connect():
+    def connect(self):
         pass
     
+    @abstractmethod
+    def upload_object(self, bucket, obj_bytes, key):
+        pass
+
     @abstractmethod
     def load_doc(bucket, json_bytes, key):
         pass
@@ -41,6 +45,10 @@ class Client(ABC):
     
     @abstractmethod
     def load_doc(self, bucket, df, key):
+        pass
+    
+    @abstractmethod
+    def load_real_time(self, bucket, doc, key):
         pass
     
     @abstractmethod
