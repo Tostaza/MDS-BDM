@@ -35,11 +35,14 @@ def transit_temporal_to_persistent_pipeline():
         AWS_SECRET_ACCESS_KEY = "admin"
         AWS_ACCESS_KEY_ID = "admin"
         
-        TEMPORAL_BUCKET = "landing-zone"
+        TEMPORAL_BUCKET = "temporal-landing-zone"
         TEMPORAL_PREFIX = "transit_posts/"
         
+        PERSISTENT_BUCKET = "persistent-landing-zone"
+        PERSISTENT_PREFIX = TEMPORAL_PREFIX
+
         temporal_path = f"s3://{TEMPORAL_BUCKET}/{TEMPORAL_PREFIX}"
-        persistent_path = "s3://persistent-landing-zone/transit_posts/"
+        persistent_path = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}"
 
         # delta-rs S3 configuration
         storage_options = {
@@ -107,15 +110,22 @@ def transit_temporal_to_persistent_pipeline():
             )
             print("Data updated via MERGE successfully.")
             
-        except Exception as e:
-            print(f"Table not found. Initializing for the first time... (Details: {e})")
-            write_deltalake(
-                persistent_path,
-                df_new,
-                storage_options=storage_options,
-                mode="overwrite"
-            )
-            print("Delta table initialized successfully.")
+        except Exception as table_not_found_e:
+            print(f"Table not found. Initializing for the first time... (Details: {table_not_found_e})")
+
+            try:
+                write_deltalake(
+                    persistent_path,
+                    df_new,
+                    storage_options=storage_options,
+                    mode="overwrite"
+                )
+                print("Delta table initialized successfully.")
+            
+            except OSError as bucket_not_found_e:
+                print(f"Bucket not found. Initializing for the first time... (Details: {bucket_not_found_e}) ")
+                s3_client.create_bucket(Bucket=PERSISTENT_BUCKET)
+
 
         # IMPORTANT: At this point, the JSONs are still in the landing-zone.
         # As discussed, it is highly recommended to add boto3 logic here to delete or move

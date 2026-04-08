@@ -88,7 +88,7 @@ with DAG(
             'rss_url': "https://nitter.net/transit/rss",
             #'kafka_topic': "transit_tweets_topic",
             's3_client': s3_client,
-            'bucket': "landing-zone"
+            'bucket': "temporal-landing-zone"
         }
     )
 
