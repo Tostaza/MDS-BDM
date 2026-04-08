@@ -23,6 +23,7 @@ default_args = {
 )
 def ingest_accidents_gu():
 
+
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
@@ -36,17 +37,19 @@ def ingest_accidents_gu():
         response.raise_for_status()
         
         catalog_json = response.json()
+        result = catalog_json["result"]
 
         client = Seaweedfs()
     
-        years = 3
+        years = 1
+        # In the catalog, results are ordered by year (e.g. [2025, 2024, 2023...])
         for i in range(years):
-            url = catalog_json["resources"][i]["url"]
-            name = catalog_json["resources"][i]["name"]
+            url = result["resources"][i]["url"]
+            name = result["resources"][i]["name"]
             response = requests.get(url)
             
             df = pd.read_csv(io.StringIO(response.text))
-            key = f"ajuntament_bcn/accidents_gu/{name}.csv"
+            key = f"ajuntament_bcn/accidents_gu/{name}"
             client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
             
 
