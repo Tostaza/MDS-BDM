@@ -41,13 +41,15 @@ def ingest_trams_congestion():
         TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
         client = Seaweedfs()
 
-        API_KEY = os.environ.get('tomtomtoken')
+        API_KEY = "Ai9JDYMoWhb7kxbTynVYrXRnJxQdXAGa"
         url = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
         points = load_json_points()
 
         data = []
         for point in points:
-            point_to_search = (point["lat"], point["lon"])
+            
+            point_to_search = f"{point['lat']},{point['lon']}"
+            print(point_to_search)
             params = {
                 "key": API_KEY,
                 "point": point_to_search,
@@ -55,15 +57,30 @@ def ingest_trams_congestion():
                 "openLr": "false",
             }
             response = requests.get(url, params=params, timeout=30)
-            response = response.json
-            print(response)
-            data.append({"current_speed" : response.currentSpeed,  "free_flow_speed": response.freeFlowSpeed, "currentTravelTime": response.currentTravelTime, "free_flow_time": response.freeFlowTravelTime, "road_close":response.roadClosure})
+            response = response.json()
+            flow = response["flowSegmentData"]
 
-        df = pd.Dataframe(data)
-        key = "TOMTOM/tomtom_maps_coordinator"
+            data.append({
+                "currentSpeed": flow["currentSpeed"],
+                "free_flow_speed": flow["freeFlowSpeed"],
+                "currentTravelTime": flow["currentTravelTime"],
+                "free_flow_time": flow["freeFlowTravelTime"],
+                "road_close": flow["roadClosure"],
+                "latitude": point['lat'],
+                "longitude": point['lon']
+            })
+
+        df = pd.DataFrame(data)
+        key = "TOMTOM/tomtom_maps_coordinator.csv"
         client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
 
-    ingest_data()
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='tomtom_trigger_temporal_toi_persistent',
+        trigger_dag_id='tomtom_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
+    ingest_data() >> trigger_temporal_to_persistent_task
 
 ingest_trams_congestion()
