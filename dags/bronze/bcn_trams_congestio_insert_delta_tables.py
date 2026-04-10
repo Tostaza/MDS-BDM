@@ -93,7 +93,7 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
             print(f"Bucket '{PERSISTENT_BUCKET}' already exists")
 
         print(df_new)
-        df_new.fillna(0)
+        df_new = df_new.dropna(axis=1, how='all')
 
         try:
 
