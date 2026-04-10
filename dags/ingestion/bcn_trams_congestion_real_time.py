@@ -17,7 +17,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='ingest_trams_congestion_real_time',
+    dag_id='bcn_trams_congestion_real_time_ingestion',
     default_args=default_args,
     schedule="*/5 * * * *",
     catchup=False,

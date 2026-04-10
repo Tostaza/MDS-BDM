@@ -16,7 +16,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='ingest_relacio_trams',
+    dag_id='bcn_relacio_trams_historic_ingestion',
     default_args=default_args,
     schedule='@yearly',
     catchup=False,
@@ -42,8 +42,8 @@ def ingest_relacio_trams():
         client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
-        task_id='trigger_bcn_relacio_trams_temporal_to_persistent',
-        trigger_dag_id='bcn_relacio_trams_temporal_to_persistent',
+        task_id='trigger_bcn_relacio_trams_historic_temporal_to_persistent',
+        trigger_dag_id='bcn_relacio_trams_historic_temporal_to_persistent',
         wait_for_completion=False
     )
 

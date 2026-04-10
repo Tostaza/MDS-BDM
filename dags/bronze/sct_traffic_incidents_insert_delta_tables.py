@@ -11,7 +11,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='sct_traffic_incidents_insert_delta_tables_dag',
+    dag_id='sct_traffic_incidents_temporal_to_persistent',
     default_args=default_args,
     description='Batch transformation from raw SCT Traffic Incidents XML to Delta Lake using delta-rs',
     schedule=None, 

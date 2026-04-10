@@ -10,7 +10,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='sct_cameras_insert_delta_tables_dag',
+    dag_id='sct_cameras_temporal_to_persistent',
     default_args=default_args,
     description='Moves raw files and catalogs XML and image paths in Delta Bronze tables',
     schedule=None, 

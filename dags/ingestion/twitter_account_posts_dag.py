@@ -94,7 +94,7 @@ with DAG(
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='trigger_temporal_to_persistent',
-        trigger_dag_id='transit_temporal_to_persistent',
+        trigger_dag_id='twitter_transit_temporal_to_persistent',
         wait_for_completion=False
     )
 

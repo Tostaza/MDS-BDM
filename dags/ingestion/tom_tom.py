@@ -76,7 +76,7 @@ def ingest_trams_congestion():
 
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
-        task_id='tomtom_trigger_temporal_toi_persistent',
+        task_id='tomtom_trigger_temporal_to_persistent',
         trigger_dag_id='tomtom_temporal_to_persistent',
         wait_for_completion=False
     )

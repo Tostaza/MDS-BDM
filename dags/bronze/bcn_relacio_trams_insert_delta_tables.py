@@ -11,7 +11,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='bcn_relacio_trams_temporal_to_persistent',
+    dag_id='bcn_relacio_trams_historic_temporal_to_persistent',
     default_args=default_args,
     description='Batch transformation from raw BCN Relacio Trams CSV to Delta Lake using delta-rs',
     schedule=None, # Triggered after the ingestion DAG

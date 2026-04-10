@@ -16,7 +16,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='ingest_accidents_gu',
+    dag_id='bcn_accidents_gu_ingest',
     default_args=default_args,
     schedule='@yearly',
     catchup=False,

@@ -124,7 +124,7 @@ def ingest_trams_congestion():
         client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
-        task_id='google_trigger_temporal_toi_persistent',
+        task_id='google_trigger_temporal_to_persistent',
         trigger_dag_id='google_temporal_to_persistent',
         wait_for_completion=False
     )

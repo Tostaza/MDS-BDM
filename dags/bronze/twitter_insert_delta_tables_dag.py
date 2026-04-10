@@ -10,7 +10,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='transit_temporal_to_persistent',
+    dag_id='twitter_transit_temporal_to_persistent',
     default_args=default_args,
     description='Batch transformation from raw JSON to Delta Lake using delta-rs',
     schedule=None, # None, since it will be triggered by the ingestion dag with schedule '*/10 * * * *'

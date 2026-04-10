@@ -47,7 +47,7 @@ def sct_traffic_incidents_ingestion():
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='trigger_sct_traffic_incidents_temporal_to_persistent',
-        trigger_dag_id='sct_traffic_incidents_insert_delta_tables_dag',
+        trigger_dag_id='sct_traffic_incidents_temporal_to_persistent',
         wait_for_completion=False
     )
 

@@ -22,7 +22,7 @@ CITIES = ["barcelona", "l'hospitalet de llobregat", "badalona", "sant adrià de 
 BUCKET = "landing-zone"
 
 @dag(
-    dag_id='traffic_cameras_full_ingestion',
+    dag_id='sct_traffic_cameras_full_ingestion',
     default_args=default_args,
     schedule='*/10 * * * *', # Frecuencia de 10 min
     catchup=False,
@@ -104,8 +104,8 @@ def traffic_cameras_dag():
         print(f"Uploaded 1 metadata file and {i+1} images to {bucket}.")
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
-        task_id='trigger_temporal_to_persistent',
-        trigger_dag_id='sct_cameras_insert_delta_tables_dag',
+        task_id='sct_cameras_trigger_temporal_to_persistent',
+        trigger_dag_id='sct_cameras_temporal_to_persistent',
         wait_for_completion=False
     )
 
