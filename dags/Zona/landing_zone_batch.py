@@ -2,8 +2,8 @@ from datetime import datetime
 import json
 import os
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
+from airflow.decorators import dag, task
+
 from Extractors.csv import ExtractorCSV
 from Extractors.json import ExtractorJSON
 from Extractors.xml import ExtractorXML
@@ -21,6 +21,7 @@ def load_api_config():
         data = json.load(f)
     return data["apis"]
 
+
 def filter_apis(apis, *, data_type=None):
     result = []
     print("filter apis")
@@ -31,65 +32,67 @@ def filter_apis(apis, *, data_type=None):
     return result
 
 
-def task_csv(**context):
-    s3_client =  Seaweedfs()
-    s3_client.connect()
-    apis = load_api_config()
-    kaggle_csv = filter_apis(apis, data_type="csv")
-    for cfg in kaggle_csv:
-        api_id = cfg["api"]
-        extractor = ExtractorCSV()
-        doc, key = extractor.extract_data(api_id, cfg["source"])
-        s3_client.load_doc("temporal-landing-zone", doc, key)
-        
-
-def task_json(**context):
-    s3_client =  Seaweedfs()
-    s3_client.connect()
-    apis = load_api_config()
-    print("json_task")
-    opendata_xml = filter_apis(apis, data_type="json")
-    for cfg in opendata_xml:
-        url = cfg["api"]
-        extractor = ExtractorJSON()  # substitueix per XmlExtractor si en tens
-        document, key = extractor.extract_data(url)
-        s3_client.load_json("temporal-landing-zone", document, key)
-
-
-def task_xml(**context):
-    s3_client =  Seaweedfs()
-    s3_client.connect()
-    apis = load_api_config()
-    print("xml task")
-    opendata_xml = filter_apis(apis, data_type="xml")
-    for cfg in opendata_xml:
-        url = cfg["api"]
-        extractor = ExtractorXML()  # substitueix per XmlExtractor si en tens
-        document, key = extractor.extract_data(url)
-        s3_client.load_xml("temporal-landing-zone", document, cfg["source"]+key)
-
-
-with DAG(
+@dag(
     dag_id="landing_zone_dag",
     start_date=datetime(2024, 1, 1),
     schedule=None,
     catchup=False,
-) as dag:
+    tags=["landing", "ingestion"]
+)
+def landing_zone_dag():
 
-    _csv_task = PythonOperator(
-        task_id="kaggle_csv_task",
-        python_callable=task_csv,
-    )
-        
-    _json_task = PythonOperator(
-        task_id="opendata_json_task",
-        python_callable=task_json,
-    )
+    @task
+    def task_csv():
+        s3_client = Seaweedfs()
+        s3_client.connect()
 
-    _xml_task = PythonOperator(
-        task_id="opendata_xml_task",
-        python_callable=task_xml,
-    )
+        apis = load_api_config()
+        kaggle_csv = filter_apis(apis, data_type="csv")
 
-    [_csv_task, _json_task, _xml_task]
+        for cfg in kaggle_csv:
+            api_id = cfg["api"]
+            extractor = ExtractorCSV()
+            doc, key = extractor.extract_data(api_id, cfg["source"])
+            s3_client.load_doc("temporal-landing-zone", doc, key)
 
+
+    @task
+    def task_json():
+        s3_client = Seaweedfs()
+        s3_client.connect()
+
+        apis = load_api_config()
+        print("json_task")
+        opendata_json = filter_apis(apis, data_type="json")
+
+        for cfg in opendata_json:
+            url = cfg["api"]
+            extractor = ExtractorJSON()
+            document, key = extractor.extract_data(url)
+            s3_client.load_json("temporal-landing-zone", document, key)
+
+
+    @task
+    def task_xml():
+        s3_client = Seaweedfs()
+        s3_client.connect()
+
+        apis = load_api_config()
+        print("xml task")
+        opendata_xml = filter_apis(apis, data_type="xml")
+
+        for cfg in opendata_xml:
+            url = cfg["api"]
+            extractor = ExtractorXML()
+            document, key = extractor.extract_data(url)
+            s3_client.load_xml("temporal-landing-zone", document, cfg["source"] + key)
+
+
+    csv_task = task_csv()
+    json_task = task_json()
+    xml_task = task_xml()
+
+    [csv_task, json_task, xml_task]
+
+
+landing_zone_dag()

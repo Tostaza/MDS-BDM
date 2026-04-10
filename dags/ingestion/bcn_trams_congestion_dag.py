@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 from airflow.decorators import dag, task
 from airflow.models import Variable
 
+from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
+
 default_args = {
     'owner': 'upc',
     'depends_on_past': False,
@@ -38,11 +40,8 @@ def ingest_trams_congestion():
         
         catalog_json = response.json()
         result = catalog_json["result"]
-
-        client = Seaweedfs()
     
         months = 16 # (2025 and 2026)
-        # In the catalog, results are ordered by year and month. We add 1 because the first element is the real time data (e.g. [RealTime, January 2025, ..., December 2025, January 2024, ...])
         for i in range(months):
             url = result["resources"][i+1]["url"]
             name = result["resources"][i+1]["name"]
@@ -52,6 +51,13 @@ def ingest_trams_congestion():
             key = f"ajuntament_bcn/trams_congestion/{name}"
             client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
-    ingest_data()
+
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_bcn_trams_congestion_temporal_to_persistent',
+        trigger_dag_id='bcn_trams_congestion_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
+    ingest_data() >> trigger_temporal_to_persistent_task
 
 ingest_trams_congestion()

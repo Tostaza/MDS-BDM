@@ -4,6 +4,7 @@ import boto3
 from datetime import datetime, timedelta
 from airflow.decorators import dag, task
 from airflow.models import Variable
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 default_args = {
     'owner': 'upc',
@@ -22,8 +23,6 @@ default_args = {
 )
 def sct_traffic_incidents_ingestion():
 
-
-    # Incidències viàries en temps real a Catalunya
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
@@ -46,6 +45,14 @@ def sct_traffic_incidents_ingestion():
         )
         print(f"Uploaded traffic incidents to {TEMPORAL_LANDING_BUCKET} as {key}")
 
-    ingest_data()
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_sct_traffic_incidents_temporal_to_persistent',
+        trigger_dag_id='sct_traffic_incidents_insert_delta_tables_dag',
+        wait_for_completion=False
+    )
+
+    ingest_data() >> trigger_temporal_to_persistent_task
+
+
 
 sct_traffic_incidents_ingestion()

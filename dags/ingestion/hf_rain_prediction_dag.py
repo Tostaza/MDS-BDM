@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from airflow.decorators import dag, task
 from airflow.models import Variable
 from Clients.seaweedfs import Seaweedfs
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 
 default_args = {
@@ -42,6 +43,13 @@ def hf_rainfall_ingestion():
         client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
         print(f"Uploaded {REPOSITORY}/{DATASET} dataset to {TEMPORAL_LANDING_BUCKET}")
 
-    ingest_from_hf()
+
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_hfrain_prediction_temporal_to_persistent',
+        trigger_dag_id='hf_rain_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
+    ingest_from_hf() >> trigger_temporal_to_persistent_task
 
 hf_rainfall_ingestion()

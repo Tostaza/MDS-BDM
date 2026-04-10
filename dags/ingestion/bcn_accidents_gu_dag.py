@@ -5,6 +5,7 @@ import boto3
 from datetime import datetime, timedelta
 from airflow.decorators import dag, task
 from airflow.models import Variable
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 default_args = {
     'owner': 'upc',
@@ -53,6 +54,12 @@ def ingest_accidents_gu():
             client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
             
 
-    ingest_data()
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_bcn_accidents_gu_temporal_to_persistent',
+        trigger_dag_id='bcn_accidents_gu_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
+    ingest_data() >> trigger_temporal_to_persistent_task
 
 ingest_accidents_gu()

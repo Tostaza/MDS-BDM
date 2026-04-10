@@ -107,7 +107,7 @@ def traffic_cameras_dag():
         task_id='trigger_temporal_to_persistent',
         trigger_dag_id='sct_cameras_insert_delta_tables_dag',
         wait_for_completion=False
-    ) 
+    )
 
     metadata = get_camera_metadata()
     ingestion_task = ingest_images(xml=metadata, bucket=BUCKET)
