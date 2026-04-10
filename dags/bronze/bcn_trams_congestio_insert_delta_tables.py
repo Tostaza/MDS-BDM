@@ -65,11 +65,18 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         processed_keys = []
         for obj in response['Contents']:
             key = obj['Key']
+            print(obj)
             if key.endswith('.csv'):
                 file_obj = s3_client.get_object(Bucket=TEMPORAL_BUCKET, Key=key)
                 file_content = file_obj['Body'].read().decode('utf-8')
                 try:
-                    data = pd.read_csv(io.StringIO(file_content))
+                    data = pd.read_csv(
+                        io.StringIO(file_content),
+                        sep=';',                
+                        quotechar='"',
+                        encoding='utf-8',
+                        engine='python'         
+                    )
                     all_data.append(data)
                 except pd.errors.ParserError:
                     print(f"Error parsing CSV from {key}")
@@ -85,13 +92,16 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         except (s3_client.exceptions.BucketAlreadyExists, s3_client.exceptions.BucketAlreadyOwnedByYou):
             print(f"Bucket '{PERSISTENT_BUCKET}' already exists")
 
+        print(df_new)
+        df_new.fillna(0)
+
         try:
 
             dt = DeltaTable(persistent_path, storage_options=storage_options)
             (
                 dt.merge(
                     source=df_new,
-                    predicate="target.tram = source.tram", # Para hacer el merge.
+                    predicate="target.idTram = source.idTram", 
                     source_alias="source",
                     target_alias="target"
                 )
