@@ -23,7 +23,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='bcn_relacio_trams_real_time_phrase_ingestion',
+    dag_id='bcn_relacio_trams_real_time_ingestion',
     default_args=default_args,
     schedule="*/5 * * * *",
     catchup=False,
