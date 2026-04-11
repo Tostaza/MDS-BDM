@@ -26,7 +26,7 @@ default_args = {
 def ingest_trams_congestion():
 
     @task
-    def ingest_data():
+    def ingest_data(**context):
         from Clients.seaweedfs import Seaweedfs
         import pandas as pd
         import io
@@ -41,8 +41,8 @@ def ingest_trams_congestion():
         catalog_json = response.json()
         result = catalog_json["result"]
     
-        url = result["resources"][0]["url"]
-        name = result["resources"][0]["name"]
+        url = result["resources"][1]["url"]
+        name = result["resources"][1]["name"]
         response = requests.get(url)
         
         df = pd.read_csv(io.StringIO(response.text))

@@ -8,6 +8,8 @@ import boto3
 import os
 from urllib.parse import urlparse
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from kafka.admin import KafkaAdminClient, NewTopic
+from kafka.errors import TopicAlreadyExistsError
 
 default_args = {
     'owner': 'upc',
@@ -67,9 +69,11 @@ def traffic_cameras_dag():
         return xml_filtered
 
     @task
-    def ingest_images(xml, bucket: str):
+    def ingest_images(xml, bucket: str, **context):
         import boto3
-        
+        import json
+        from kafka import KafkaProducer
+
         aws_access_key_id = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
         aws_secret_access_key = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
         endpoint_url = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
@@ -80,7 +84,27 @@ def traffic_cameras_dag():
             endpoint_url= endpoint_url
         )
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        bootstrap_servers = Variable.get("KAFKA_BOOTSTRAP_SERVERS", default_var=os.getenv("KAFKA_BOOTSTRAP_SERVERS")).split(",")
+        print(bootstrap_servers)
+        print(type(bootstrap_servers))
+        producer = KafkaProducer(
+            bootstrap_servers=bootstrap_servers,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+
+        try:
+            admin_client = KafkaAdminClient(bootstrap_servers=bootstrap_servers)
+            new_topic = NewTopic(name='traffic_cameras', num_partitions=1, replication_factor=1)
+            admin_client.create_topics(new_topics=[new_topic], validate_only=False)
+            print("Topic 'traffic_cameras' created successfully.")
+        except TopicAlreadyExistsError:
+            print("Topic already exists")
+        except Exception as e:
+            print(f"Could not verify/create topic (may not have connection): {e}")
+
+
+        # timestamp = context['logical_date'].strftime("%Y%m%d_%H%M%S")
+        timestamp = context['logical_date'].isoformat()
         root = ET.fromstring(xml)   
         ns = {"gml": "http://www.opengis.net/gml", "cite": "http://www.opengeospatial.net/cite"}
         
@@ -97,6 +121,16 @@ def traffic_cameras_dag():
                     object_name = f"traffic_cameras/{timestamp}/{carretera}_{municipi}_{i}{ext}"
 
                     s3_client.put_object(Bucket=bucket, Key=object_name, Body=img_data)
+
+                    kafka_event = {
+                        "carretera": carretera,
+                        "municipi": municipi,
+                        "link": link,
+                        "timestamp": timestamp,
+                        "url": f"s3://{bucket}/{object_name}"
+                    }
+                    producer.send("traffic_cameras", value=kafka_event)
+
                 except Exception as e:
                     print(f"Error with camera {link}: {e}")
 

@@ -69,8 +69,8 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
-    networks:
-      - broker-kafka
+    # networks:
+    #   - broker-kafka
     ports:
       - "2181:2181"
     environment:
@@ -80,8 +80,8 @@ services:
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
-    networks:
-      - broker-kafka
+    # networks:
+    #   - broker-kafka
     depends_on:
       - zookeeper
     ports:
@@ -99,8 +99,8 @@ services:
   kafdrop:
     image: obsidiandynamics/kafdrop:latest
     container_name: kafdrop
-    networks:
-      - broker-kafka
+    # networks:
+    #   - broker-kafka
     depends_on:
       - kafka
     ports:
@@ -108,6 +108,25 @@ services:
     environment:
       KAFKA_BROKERCONNECT: "kafka:29092"
       JVM_OPTS: "-Xms32M -Xmx128M"
+
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    # networks:
+    #   - broker-kafka
+    ports:
+      - 8081:8080
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "Local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+      # "Laptop-friendly resource limits"
+      # Cap the JVM heap; the UI is read-only and needs very little memory.
+      JAVA_OPTS: '-Xmx192m -Xms128m'
+    depends_on:
+      kafka:
+        condition: service_healthy
+        
+    restart: unless-stopped
 
   # ----------------------------------------- AIRFLOW ----------------------------------------- #
 
@@ -210,6 +229,7 @@ services:
       AIRFLOW_VAR_AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AIRFLOW_VAR_AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       AIRFLOW_VAR_S3_ENDPOINT: ${S3_ENDPOINT}
+      AIRFLOW_VAR_KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
 
     restart: always
     depends_on:
