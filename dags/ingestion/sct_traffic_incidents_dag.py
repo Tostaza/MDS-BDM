@@ -19,7 +19,7 @@ default_args = {
     default_args=default_args,
     schedule='*/5 * * * *',
     catchup=False,
-    tags=['sct', 'traffic', 'ingestion'],
+    tags=['sct', 'traffic', 'scheduled', 'ingestion'],
 )
 def sct_traffic_incidents_ingestion():
 

@@ -32,7 +32,7 @@ default_args = {
     default_args=default_args,
     schedule="*/5 * * * *",
     catchup=False,
-    tags=['google', 'trams', 'transit'],
+    tags=['google', 'trams', 'transit', 'scheduled', 'ingestion'],
 )
 def ingest_trams_congestion():
 

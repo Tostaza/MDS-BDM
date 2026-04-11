@@ -26,7 +26,7 @@ BUCKET = "landing-zone"
     default_args=default_args,
     schedule='*/10 * * * *', # Frecuencia de 10 min
     catchup=False,
-    tags=['sct', 'traffic', 'ingestion']
+    tags=['sct', 'traffic', 'scheduled', 'ingestion']
 )
 def traffic_cameras_dag():
 

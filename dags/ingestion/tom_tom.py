@@ -28,7 +28,7 @@ default_args = {
     default_args=default_args,
     schedule="*/1 * * * *",
     catchup=False,
-    tags=['tom_tom', 'trams', 'transit'],
+    tags=['tom_tom', 'trams', 'transit', 'scheduled', 'ingestion'],
 )
 def ingest_trams_congestion():
 

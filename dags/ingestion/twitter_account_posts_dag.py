@@ -23,7 +23,7 @@ with DAG(
     schedule="*/5 * * * *", # Frequency: Every 5 minutes
     start_date=datetime(2023, 1, 1),
     catchup=False,
-    tags=['twitter', "social_media", 'ingestion'],
+    tags=['twitter', "social_media", 'scheduled', 'ingestion'],
 ) as dag:
 
     def fetch_and_ingest_rss(source_id, variable_name, rss_url, s3_client, bucket):

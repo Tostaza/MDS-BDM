@@ -21,7 +21,7 @@ default_args = {
     default_args=default_args,
     schedule=None, # This should be executed only once
     catchup=False,
-    tags=['huggingface', 'csv', 'weather'],
+    tags=['huggingface', 'csv', 'weather', 'manual', 'ingestion'],
 )
 def hf_rainfall_ingestion():
 

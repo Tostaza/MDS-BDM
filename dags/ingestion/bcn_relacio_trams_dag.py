@@ -20,7 +20,7 @@ default_args = {
     default_args=default_args,
     schedule='@yearly',
     catchup=False,
-    tags=['opendata', 'csv', 'transit'],
+    tags=['opendata', 'csv', 'transit', 'manual', 'ingestion'],
 )
 def ingest_relacio_trams():
 

@@ -21,7 +21,7 @@ default_args = {
     default_args=default_args,
     schedule="@monthly",
     catchup=False,
-    tags=['opendata', 'csv', 'transit'],
+    tags=['opendata', 'csv', 'transit', 'scheduled', 'ingestion'],
 )
 def ingest_trams_congestion():
 

@@ -31,7 +31,7 @@ BUCKET = "landing-zone"
     description='Ingestion of AEMET weather predictions for Barcelona',
     schedule='0 */6 * * *', # Execute 4 times a day (every 6 hours)
     catchup=False,
-    tags=['aemet', 'weather', 'ingestion'],
+    tags=['aemet', 'weather', 'scheduled', 'ingestion'],
 )
 def aemet_ingestion_workflow():
 

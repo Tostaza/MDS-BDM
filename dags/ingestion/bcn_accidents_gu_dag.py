@@ -20,7 +20,7 @@ default_args = {
     default_args=default_args,
     schedule='@yearly',
     catchup=False,
-    tags=['opendata', 'json', 'pollution'],
+    tags=['opendata', 'json', 'pollution', 'scheduled', 'ingestion'],
 )
 def ingest_accidents_gu():
 
