@@ -17,11 +17,11 @@ default_args = {
 }
 
 @dag(
-    dag_id='bcn_trams_congestion_real_time_ingestion',
+    dag_id='bcn_historic_trams_congestion_ingestion',
     default_args=default_args,
-    schedule="*/5 * * * *",
+    schedule=None,
     catchup=False,
-    tags=['opendata', 'csv', 'transit', 'scheduled', 'ingestion'],
+    tags=['opendata', 'csv', 'transit', 'manual', 'ingestion'],
 )
 def ingest_trams_congestion():
 
@@ -33,26 +33,31 @@ def ingest_trams_congestion():
 
         TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
         client = Seaweedfs()
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=trams"
-        response = requests.get(catalog_url, headers = headers)
+        response = requests.get(catalog_url)
         response.raise_for_status()
         
         catalog_json = response.json()
         result = catalog_json["result"]
+    
+        months = 16 # (2025 and 2026)
+        for i in range(months):
+            url = result["resources"][i+1]["url"]
+            name = result["resources"][i+1]["name"]
+            response = requests.get(url)
+            
+            df = pd.read_csv(io.StringIO(response.text))
+            key = f"ajuntament_bcn/trams_congestion/{name}"
+            client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
-        url = result["resources"][1]["url"]
-        print(url)
-        name = result["resources"][1]["name"]
-        response = requests.get(url)
-        print(response.text)
-        df = pd.read_csv(response.text, sep=";")
-        key = key = f"ajuntament_bcn/trams_congestion/{name}+'real_time'"
-        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
-    ingest_data()
+    trigger_temporal_to_persistent_task = TriggerDagRunOperator(
+        task_id='trigger_bcn_trams_congestion_temporal_to_persistent',
+        trigger_dag_id='bcn_trams_congestion_temporal_to_persistent',
+        wait_for_completion=False
+    )
+
+    ingest_data() >> trigger_temporal_to_persistent_task
 
 ingest_trams_congestion()

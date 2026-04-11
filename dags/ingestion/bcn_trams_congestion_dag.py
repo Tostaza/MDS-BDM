@@ -41,15 +41,13 @@ def ingest_trams_congestion():
         catalog_json = response.json()
         result = catalog_json["result"]
     
-        months = 16 # (2025 and 2026)
-        for i in range(months):
-            url = result["resources"][i+1]["url"]
-            name = result["resources"][i+1]["name"]
-            response = requests.get(url)
-            
-            df = pd.read_csv(io.StringIO(response.text))
-            key = f"ajuntament_bcn/trams_congestion/{name}"
-            client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
+        url = result["resources"][0]["url"]
+        name = result["resources"][0]["name"]
+        response = requests.get(url)
+        
+        df = pd.read_csv(io.StringIO(response.text))
+        key = f"ajuntament_bcn/trams_congestion/{name}"
+        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
 
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(

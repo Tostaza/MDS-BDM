@@ -6,8 +6,10 @@ from airflow.models import DagModel
 from airflow.utils.session import provide_session
 
 dag_ids = [
-    "bcn_relacio_trams_historic_ingestion",
+    "bcn_relacio_trams_ingestion",
     "ingest_hf_rain_prediction",
+    "bcn_historic_trams_congestion_ingestion",
+    "bcn_historic_accidents_gu_ingest"
 ]
 
 @dag(

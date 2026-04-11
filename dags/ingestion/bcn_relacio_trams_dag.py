@@ -16,7 +16,7 @@ default_args = {
 }
 
 @dag(
-    dag_id='bcn_relacio_trams_historic_ingestion',
+    dag_id='bcn_relacio_trams_ingestion',
     default_args=default_args,
     schedule=None,
     catchup=False,
