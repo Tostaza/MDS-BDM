@@ -3,7 +3,7 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta, timezone
-# from kafka import KafkaProducer
+from kafka import KafkaProducer
 import boto3
 import os
 
@@ -56,12 +56,22 @@ with DAG(
         else:
             print(f"{len(new_posts)} new posts found")
 
-        # --- INYECTAR A KAFKA (Hot Path) ---
-        # producer = KafkaProducer(bootstrap_servers=['kafka:9092'], 
-        #                          value_serializer=lambda v: json.dumps(v).encode('utf-8'))
-        # for post in nuevos_posts:
-        #     producer.send('transit_tweets_topic', post)
-        # producer.flush()
+        bootstrap_servers = Variable.get("KAFKA_BOOTSTRAP_SERVERS", default_var=os.getenv("KAFKA_BOOTSTRAP_SERVERS")).split(",")
+        producer = KafkaProducer(bootstrap_servers=bootstrap_servers, 
+                                 value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+        topic_name = 'transit_tweets_topic'
+        try:
+            admin_client = KafkaAdminClient(bootstrap_servers=bootstrap_servers)
+            new_topic = NewTopic(name=topic_name, num_partitions=1, replication_factor=1)
+            admin_client.create_topics(new_topics=[new_topic], validate_only=False)
+            print(f"Topic '{topic_name}' created successfully.")
+        except TopicAlreadyExistsError:
+            print("Topic already exists")
+        except Exception as e:
+            print(f"Could not verify/create topic (may not have connection): {e}")
+        for post in new_posts:
+            producer.send(topic_name, value=post)
+        producer.flush()
 
         for p in new_posts:
             dt = parsedate_to_datetime(p.published)
