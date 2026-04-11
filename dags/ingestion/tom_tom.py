@@ -58,6 +58,7 @@ def ingest_trams_congestion():
             }
             response = requests.get(url, params=params, timeout=30)
             response = response.json()
+            print(response)
             flow = response["flowSegmentData"]
 
             data.append({
