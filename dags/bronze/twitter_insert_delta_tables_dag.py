@@ -35,14 +35,14 @@ def transit_temporal_to_persistent_pipeline():
         AWS_SECRET_ACCESS_KEY = "admin"
         AWS_ACCESS_KEY_ID = "admin"
         
-        TEMPORAL_BUCKET = "temporal-landing-zone"
-        TEMPORAL_PREFIX = "transit_posts/"
+        LANDING_BUCKET = "landing-zone"
+        LANDING_PREFIX = "transit_posts/"
         
-        PERSISTENT_BUCKET = "persistent-landing-zone"
-        PERSISTENT_PREFIX = TEMPORAL_PREFIX
+        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_PREFIX = LANDING_PREFIX
 
-        temporal_path = f"s3://{TEMPORAL_BUCKET}/{TEMPORAL_PREFIX}"
-        persistent_path = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}"
+        temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
+        persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
 
         # delta-rs S3 configuration
         storage_options = {
@@ -62,15 +62,15 @@ def transit_temporal_to_persistent_pipeline():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
 
-        response = s3_client.list_objects_v2(Bucket=TEMPORAL_BUCKET, Prefix=TEMPORAL_PREFIX)
+        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
         if 'Contents' not in response:
-            print("No new files found in the Temporal Landing Zone.")
+            print("No new files found in the Landing Zone.")
             return
 
         all_data = []
         for obj in response['Contents']:
             if obj['Key'].endswith('.json'):
-                file_obj = s3_client.get_object(Bucket=TEMPORAL_BUCKET, Key=obj['Key'])
+                file_obj = s3_client.get_object(Bucket=LANDING_BUCKET, Key=obj['Key'])
                 print("File object obtained")
                 file_content = file_obj['Body'].read().decode('utf-8')
                 try:
@@ -124,7 +124,7 @@ def transit_temporal_to_persistent_pipeline():
             
             except OSError as bucket_not_found_e:
                 print(f"Bucket not found. Initializing for the first time... (Details: {bucket_not_found_e}) ")
-                s3_client.create_bucket(Bucket=PERSISTENT_BUCKET)
+                s3_client.create_bucket(Bucket=TRUSTED_BUCKET)
 
 
         # IMPORTANT: At this point, the JSONs are still in the landing-zone.

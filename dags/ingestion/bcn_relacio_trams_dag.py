@@ -31,7 +31,7 @@ def ingest_relacio_trams():
         import pandas as pd
         import io
 
-        TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+        LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
 
         url = "https://opendata-ajuntament.barcelona.cat/data/dataset/1090983a-1c40-4609-8620-14ad49aae3ab/resource/c97072a3-3619-4547-84dd-f1999d2a3fec/download/transit_relacio_trams_format_long.csv"
@@ -39,7 +39,7 @@ def ingest_relacio_trams():
         
         df = pd.read_csv(io.StringIO(response.text))
         key = f"ajuntament_bcn/relacio_trams/relacio_trams_format_long.csv"
-        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
+        client.upload_dataframe(LANDING_BUCKET, key, df)
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='trigger_bcn_relacio_trams_historic_temporal_to_persistent',

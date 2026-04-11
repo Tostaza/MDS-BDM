@@ -41,13 +41,13 @@ def bcn_relacio_trams_real_time_temporal_to_persistent():
         AWS_ACCESS_KEY_ID = "admin"
         AWS_SECRET_ACCESS_KEY = "admin"
         
-        TEMPORAL_BUCKET = "temporal-landing-zone"
-        TEMPORAL_PREFIX = "ajuntament_bcn/relacio_trams/real_time/"
-        PERSISTENT_BUCKET = "persistent-landing-zone"
-        PERSISTENT_PREFIX = TEMPORAL_PREFIX
+        LANDING_BUCKET = "landing-zone"
+        LANDING_PREFIX = "ajuntament_bcn/relacio_trams/real_time/"
+        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_PREFIX = LANDING_PREFIX
         
-        temporal_path = f"s3://{TEMPORAL_BUCKET}/{TEMPORAL_PREFIX}"
-        persistent_path = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}"
+        temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
+        persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
 
         storage_options = {
             "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
@@ -65,9 +65,9 @@ def bcn_relacio_trams_real_time_temporal_to_persistent():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
 
-        response = s3_client.list_objects_v2(Bucket=TEMPORAL_BUCKET, Prefix=TEMPORAL_PREFIX) # prefix es el nombre de la carpeta a la cual acceder para retrieve data.
+        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX) # prefix es el nombre de la carpeta a la cual acceder para retrieve data.
         if 'Contents' not in response:
-            print("No new files found in the Temporal Landing Zone for BCN Relacio Trams.")
+            print("No new files found in the Landing Zone for BCN Relacio Trams.")
             return
 
         all_data = []
@@ -75,7 +75,7 @@ def bcn_relacio_trams_real_time_temporal_to_persistent():
         for obj in response['Contents']:
             key = obj['Key']
             if key.endswith('.csv'):
-                file_obj = s3_client.get_object(Bucket=TEMPORAL_BUCKET, Key=key)
+                file_obj = s3_client.get_object(Bucket=LANDING_BUCKET, Key=key)
                 file_content = file_obj['Body'].read().decode('utf-8')
                 try:
                     data = pd.read_csv(io.StringIO(file_content))
@@ -90,9 +90,9 @@ def bcn_relacio_trams_real_time_temporal_to_persistent():
         df_new = pd.concat(all_data, ignore_index=True)
 
         try:
-            s3_client.create_bucket(Bucket=PERSISTENT_BUCKET)
+            s3_client.create_bucket(Bucket=TRUSTED_BUCKET)
         except (s3_client.exceptions.BucketAlreadyExists, s3_client.exceptions.BucketAlreadyOwnedByYou):
-            print(f"Bucket '{PERSISTENT_BUCKET}' already exists")
+            print(f"Bucket '{TRUSTED_BUCKET}' already exists")
 
         try:
             write_deltalake(

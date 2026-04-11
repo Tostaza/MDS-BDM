@@ -42,7 +42,7 @@ def ingest_trams_congestion():
         import pandas as pd
         import io
 
-        TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+        LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
         load_dotenv()
 
@@ -121,7 +121,7 @@ def ingest_trams_congestion():
 
         df = pd.DataFrame(data)
         key = "Google/google_maps_coordinator.csv"
-        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
+        client.upload_dataframe(LANDING_BUCKET, key, df)
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='google_trigger_temporal_to_persistent',

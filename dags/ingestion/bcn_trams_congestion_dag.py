@@ -31,7 +31,7 @@ def ingest_trams_congestion():
         import pandas as pd
         import io
 
-        TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+        LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=trams"
@@ -47,7 +47,7 @@ def ingest_trams_congestion():
         
         df = pd.read_csv(io.StringIO(response.text))
         key = f"ajuntament_bcn/trams_congestion/{name}"
-        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
+        client.upload_dataframe(LANDING_BUCKET, key, df)
 
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(

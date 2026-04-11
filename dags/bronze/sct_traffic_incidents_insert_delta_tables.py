@@ -32,11 +32,11 @@ def sct_traffic_incidents_bronze_pipeline():
         AWS_SECRET_ACCESS_KEY = "admin"
         AWS_ACCESS_KEY_ID = "admin"
         
-        TEMPORAL_BUCKET = "temporal-landing-zone"
-        TEMPORAL_PREFIX = "sct/traffic_incidents/"
+        LANDING_BUCKET = "landing-zone"
+        LANDING_PREFIX = "sct/traffic_incidents/"
         
-        PERSISTENT_BUCKET = "persistent-landing-zone"
-        PERSISTENT_PREFIX = "sct/traffic_incidents/"
+        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_PREFIX = "sct/traffic_incidents/"
         
         storage_options = {
             "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -54,12 +54,12 @@ def sct_traffic_incidents_bronze_pipeline():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
 
-        response = s3_client.list_objects_v2(Bucket=TEMPORAL_BUCKET, Prefix=TEMPORAL_PREFIX)
+        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
         if 'Contents' not in response:
-            print("No new files found in the Temporal Landing Zone for SCT Traffic Incidents.")
+            print("No new files found in the Landing Zone for SCT Traffic Incidents.")
             return
 
-        persistent_path_xml = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}"
+        persistent_path_xml = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
         
         metadata_xml = []
 
@@ -68,7 +68,7 @@ def sct_traffic_incidents_bronze_pipeline():
 
             if key.endswith('.xml'):
                 xml_content = s3_client.get_object(
-                    Bucket=TEMPORAL_BUCKET,
+                    Bucket=LANDING_BUCKET,
                     Key=key
                 )['Body'].read().decode('utf-8')
 

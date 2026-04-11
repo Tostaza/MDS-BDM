@@ -31,10 +31,10 @@ def aemet_temporal_to_persistent_pipeline():
         AWS_ACCESS_KEY_ID = "admin"
         AWS_SECRET_ACCESS_KEY = "admin"
         
-        TEMPORAL_BUCKET = "landing-zone"
-        TEMPORAL_PREFIX = "aemet/"
+        LANDING_BUCKET = "landing-zone"
+        LANDING_PREFIX = "aemet/"
         
-        persistent_path = "s3://persistent-landing-zone/aemet_predictions/"
+        persistent_path = "s3://trusted-zone/aemet_predictions/"
 
         storage_options = {
             "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
@@ -52,9 +52,9 @@ def aemet_temporal_to_persistent_pipeline():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
 
-        response = s3_client.list_objects_v2(Bucket=TEMPORAL_BUCKET, Prefix=TEMPORAL_PREFIX)
+        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
         if 'Contents' not in response:
-            print("No new files found in the Temporal Landing Zone for AEMET.")
+            print("No new files found in the Landing Zone for AEMET.")
             return
 
         all_data = []
@@ -62,7 +62,7 @@ def aemet_temporal_to_persistent_pipeline():
         for obj in response['Contents']:
             key = obj['Key']
             if key.endswith('.json'):
-                file_obj = s3_client.get_object(Bucket=TEMPORAL_BUCKET, Key=key)
+                file_obj = s3_client.get_object(Bucket=LANDING_BUCKET, Key=key)
                 file_content = file_obj['Body'].read().decode('utf-8')
                 try:
                     data = json.loads(file_content)
@@ -111,8 +111,8 @@ def aemet_temporal_to_persistent_pipeline():
 
         # if processed_keys:
         #     delete_objects = {'Objects': [{'Key': k} for k in processed_keys]}
-        #     s3_client.delete_objects(Bucket=TEMPORAL_BUCKET, Delete=delete_objects)
-        #     print(f"Cleaned up {len(processed_keys)} files from {TEMPORAL_BUCKET}.")
+        #     s3_client.delete_objects(Bucket=LANDING_BUCKET, Delete=delete_objects)
+        #     print(f"Cleaned up {len(processed_keys)} files from {LANDING_BUCKET}.")
 
     process_temporal_to_persistent()
 

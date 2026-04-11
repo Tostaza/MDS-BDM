@@ -31,11 +31,11 @@ def traffic_cameras_bronze_pipeline():
         AWS_SECRET_ACCESS_KEY = "admin"
         AWS_ACCESS_KEY_ID = "admin"
         
-        TEMPORAL_BUCKET = "landing-zone"
-        TEMPORAL_PREFIX = "traffic_cameras"
+        LANDING_BUCKET = "landing-zone"
+        LANDING_PREFIX = "traffic_cameras"
         
-        PERSISTENT_BUCKET = "persistent-landing-zone"
-        PERSISTENT_PREFIX = "traffic_cameras"
+        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_PREFIX = "traffic_cameras"
         
         storage_options = {
             "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -53,7 +53,7 @@ def traffic_cameras_bronze_pipeline():
             aws_secret_access_key=AWS_SECRET_ACCESS_KEY
         )
 
-        response = s3_client.list_objects_v2(Bucket=TEMPORAL_BUCKET, Prefix=TEMPORAL_PREFIX)
+        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
         if 'Contents' not in response:
             return
 
@@ -61,7 +61,7 @@ def traffic_cameras_bronze_pipeline():
         metadata_xml = []
         metadata_images = []
 
-        regex = rf"^{TEMPORAL_PREFIX}/(\d{{8}}_\d{{6}})/"
+        regex = rf"^{LANDING_PREFIX}/(\d{{8}}_\d{{6}})/"
         for obj in response['Contents']:
             old_key = obj['Key']
             timestamp = re.match(regex, old_key).group(1)
@@ -69,16 +69,16 @@ def traffic_cameras_bronze_pipeline():
     
             try:
                 if old_key.endswith('.xml'):
-                    xml_content = s3_client.get_object(Bucket=TEMPORAL_BUCKET, Key=old_key)['Body'].read().decode('utf-8')
+                    xml_content = s3_client.get_object(Bucket=LANDING_BUCKET, Key=old_key)['Body'].read().decode('utf-8')
                     metadata_xml.append({"timestamp": timestamp, "xml_content": xml_content})
                 
                 else:
-                    new_key = f"{PERSISTENT_PREFIX}/images/raw/{timestamp}/{filename}"
+                    new_key = f"{TRUSTED_PREFIX}/images/raw/{timestamp}/{filename}"
                     s3_client.copy_object(
-                        CopySource={'Bucket': TEMPORAL_BUCKET, 'Key': old_key},
-                        Bucket=PERSISTENT_BUCKET, Key=new_key
+                        CopySource={'Bucket': LANDING_BUCKET, 'Key': old_key},
+                        Bucket=TRUSTED_BUCKET, Key=new_key
                     )
-                    metadata_images.append({"timestamp": timestamp, "url": f"s3://{PERSISTENT_BUCKET}/{new_key}"})
+                    metadata_images.append({"timestamp": timestamp, "url": f"s3://{TRUSTED_BUCKET}/{new_key}"})
             
             except Exception as e:
                 print(f"Error processing {old_key}: {e}")
@@ -108,8 +108,8 @@ def traffic_cameras_bronze_pipeline():
         if 'timestamp' not in img_df.columns:
             raise ValueError("The 'timestamp' column is missing from the source data.")
 
-        persistent_path_xml = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}/xml"
-        persistent_path_img = f"s3://{PERSISTENT_BUCKET}/{PERSISTENT_PREFIX}/images/metadata"
+        persistent_path_xml = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}/xml"
+        persistent_path_img = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}/images/metadata"
         try:
             dt = DeltaTable(persistent_path_xml, storage_options=storage_options)
             (

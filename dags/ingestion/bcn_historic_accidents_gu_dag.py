@@ -31,7 +31,7 @@ def ingest_accidents_gu():
         import pandas as pd
         import io
 
-        TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+        LANDING_BUCKET = "landing-zone"
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=accidents-gu-bcn"
         response = requests.get(catalog_url)
@@ -51,7 +51,7 @@ def ingest_accidents_gu():
             
             df = pd.read_csv(io.StringIO(response.text))
             key = f"ajuntament_bcn/accidents_gu/{name}"
-            client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
+            client.upload_dataframe(LANDING_BUCKET, key, df)
             
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(

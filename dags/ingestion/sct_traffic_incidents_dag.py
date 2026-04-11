@@ -27,7 +27,7 @@ def sct_traffic_incidents_ingestion():
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
 
-        TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+        LANDING_BUCKET = "landing-zone"
 
         url = "https://www.gencat.cat/transit/opendata/incidenciesGML.xml"
         response = requests.get(url)
@@ -39,11 +39,11 @@ def sct_traffic_incidents_ingestion():
         
         key = f"sct/traffic_incidents/{timestamp}.xml"
         client.upload_object(
-            bucket=TEMPORAL_LANDING_BUCKET,
+            bucket=LANDING_BUCKET,
             key=key,
             obj_bytes=response.text
         )
-        print(f"Uploaded traffic incidents to {TEMPORAL_LANDING_BUCKET} as {key}")
+        print(f"Uploaded traffic incidents to {LANDING_BUCKET} as {key}")
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='trigger_sct_traffic_incidents_temporal_to_persistent',

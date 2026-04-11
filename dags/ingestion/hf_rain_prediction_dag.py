@@ -28,7 +28,7 @@ def hf_rainfall_ingestion():
     REPOSITORY = "kanishka089"
     DATASET = "RainPrediction"
     
-    TEMPORAL_LANDING_BUCKET = "temporal-landing-zone"
+    LANDING_BUCKET = "landing-zone"
 
     @task
     def ingest_from_hf():
@@ -40,8 +40,8 @@ def hf_rainfall_ingestion():
         df = dataset["train"].to_pandas()
 
         key = f"huggingface/{REPOSITORY}/{DATASET}.csv"
-        client.upload_dataframe(TEMPORAL_LANDING_BUCKET, key, df)
-        print(f"Uploaded {REPOSITORY}/{DATASET} dataset to {TEMPORAL_LANDING_BUCKET}")
+        client.upload_dataframe(LANDING_BUCKET, key, df)
+        print(f"Uploaded {REPOSITORY}/{DATASET} dataset to {LANDING_BUCKET}")
 
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
