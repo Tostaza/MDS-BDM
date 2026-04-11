@@ -18,7 +18,7 @@ async def simulate(device_id: str, producer: KafkaProducer, topic_name: str):
     is_empty = random.choice([True,False])
     try:
         while True:
-            sleep = random.uniform(1.0, 10.0)
+            sleep = random.uniform(60.0, 600.0) # 1 - 10 min
             await asyncio.sleep(sleep)
 
             is_empty = not is_empty
