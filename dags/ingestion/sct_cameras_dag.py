@@ -1,6 +1,6 @@
 from airflow.decorators import dag, task
 from airflow.models import Variable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import requests
 import pandas as pd
 import xml.etree.ElementTree as ET
@@ -10,8 +10,8 @@ from urllib.parse import urlparse
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 default_args = {
-    'owner': 'bdm_expert',
-    'start_date': datetime(2026, 3, 31),
+    'owner': 'upc',
+    'start_date': datetime.now(tz=timezone.utc),
     'retries': 1,
     'retry_delay': timedelta(minutes=2),
 }

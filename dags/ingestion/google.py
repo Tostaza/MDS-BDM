@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from airflow.decorators import dag, task  # pyright: ignore[reportMissingImports]
 from airflow.models import Variable  # pyright: ignore[reportMissingImports]
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator  # pyright: ignore[reportMissingImports]
@@ -22,7 +22,7 @@ def load_json_points():
 default_args = {
     'owner': 'upc',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
+    'start_date': datetime.now(tz=timezone.utc),
     'retries': 2,
     'retry_delay': timedelta(minutes=5),
 }

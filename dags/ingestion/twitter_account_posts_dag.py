@@ -2,7 +2,7 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.models import Variable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 # from kafka import KafkaProducer
 import boto3
 import os
@@ -11,6 +11,7 @@ import os
 default_args = {
     'owner': 'upc',
     'depends_on_past': False,
+    'start_date': datetime.now(tz=timezone.utc),
     'retries': 3,
     'retry_delay': timedelta(minutes=1),
 }
@@ -21,7 +22,6 @@ with DAG(
     default_args=default_args,
     description='Micro-batching ingestion of RSS feed posts from Transit Twitter account',
     schedule="*/5 * * * *", # Frequency: Every 5 minutes
-    start_date=datetime(2023, 1, 1),
     catchup=False,
     tags=['twitter', "social_media", 'scheduled', 'ingestion'],
 ) as dag:

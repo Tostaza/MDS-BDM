@@ -1,7 +1,7 @@
 import os
 import boto3
 # from huggingface_hub import hf_hub_download
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from airflow.decorators import dag, task
 from airflow.models import Variable
 from Clients.seaweedfs import Seaweedfs
@@ -11,7 +11,7 @@ from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 default_args = {
     'owner': 'upc',
     'depends_on_past': False,
-    'start_date': datetime(2024, 1, 1),
+    'start_date': datetime.now(tz=timezone.utc),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
 }
