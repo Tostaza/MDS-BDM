@@ -3,7 +3,6 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta, timezone
-from kafka import KafkaProducer
 import boto3
 import os
 
@@ -31,6 +30,9 @@ with DAG(
         from email.utils import parsedate_to_datetime
         import feedparser
         import json
+        from kafka import KafkaProducer
+        from kafka.admin import KafkaAdminClient, NewTopic
+        from kafka.errors import TopicAlreadyExistsError
 
         latest_post_timestamp = datetime.fromisoformat(Variable.get(f"{source_id}_{variable_name}", default_var="2026-03-21T00:00:00+00:00"))
         

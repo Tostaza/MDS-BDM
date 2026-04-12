@@ -96,18 +96,18 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  kafdrop:
-    image: obsidiandynamics/kafdrop:latest
-    container_name: kafdrop
-    # networks:
-    #   - broker-kafka
-    depends_on:
-      - kafka
-    ports:
-      - "9002:9000"
-    environment:
-      KAFKA_BROKERCONNECT: "kafka:29092"
-      JVM_OPTS: "-Xms32M -Xmx128M"
+  # kafdrop:
+  #   image: obsidiandynamics/kafdrop:latest
+  #   container_name: kafdrop
+  #   # networks:
+  #   #   - broker-kafka
+  #   depends_on:
+  #     - kafka
+  #   ports:
+  #     - "9002:9000"
+  #   environment:
+  #     KAFKA_BROKERCONNECT: "kafka:29092"
+  #     JVM_OPTS: "-Xms32M -Xmx128M"
 
   kafka-ui:
     container_name: kafka-ui
@@ -124,7 +124,7 @@ services:
       JAVA_OPTS: '-Xmx192m -Xms128m'
     depends_on:
       kafka:
-        condition: service_healthy
+    #     condition: service_healthy
         
     restart: unless-stopped
 
