@@ -7,7 +7,7 @@ from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
 
 
-KAFKA_BOOTSTRAP = "localhost:9092"
+KAFKA_BOOTSTRAP = "kafka:29092"
 TOPIC = "Sensors-IoT"
 INTERVAL = 5  # segundos
 

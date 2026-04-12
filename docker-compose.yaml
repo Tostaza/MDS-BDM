@@ -397,7 +397,24 @@ services:
                python parking_iot_sensor.py --brokers kafka:29092"
     networks:
       - default
-      - broker-kafka
+      # - broker-kafka
+    depends_on:
+      kafka:
+        condition: service_started
+
+  sensor-bcn:
+    image: python:3.11-slim
+    container_name: sensor-bcn
+    restart: always
+    volumes:
+      - ./src/synthetic_data:/app
+    working_dir: /app
+    command: >
+      bash -c "pip install kafka-python-ng && 
+               python sensor_bcn.py --brokers kafka:29092"
+    networks:
+      - default
+      # - broker-kafka
     depends_on:
       kafka:
         condition: service_started
@@ -406,6 +423,6 @@ volumes:
   seaweedfs-data:
   postgres-db-volume:
 
-networks:
-  broker-kafka:
-    driver: bridge
+# networks:
+#   broker-kafka:
+#     driver: bridge
