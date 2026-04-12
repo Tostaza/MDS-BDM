@@ -79,6 +79,14 @@ def bcn_accidents_gu_temporal_to_persistent_pipeline():
             return
 
         df_new = pd.concat(all_data, ignore_index=True)
+        cols_float = [
+            "Coordenada_UTM_X_ED50",
+            "Coordenada_UTM_Y_ED50"
+        ]
+
+        for col in cols_float:
+            if col in df_new.columns:
+                df_new[col] = pd.to_numeric(df_new[col], errors="coerce")
 
         try:
             s3_client.create_bucket(Bucket=TRUSTED_BUCKET)
