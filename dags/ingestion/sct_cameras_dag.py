@@ -103,8 +103,8 @@ def traffic_cameras_dag():
             print(f"Could not verify/create topic (may not have connection): {e}")
 
 
-        # timestamp = context['logical_date'].strftime("%Y%m%d_%H%M%S")
-        timestamp = context['logical_date'].isoformat()
+        timestamp = context['logical_date'].strftime("%Y%m%d_%H%M%S")
+        # timestamp = context['logical_date'].isoformat()strftime("%Y%m%d_%H%M%S")
         root = ET.fromstring(xml)   
         ns = {"gml": "http://www.opengis.net/gml", "cite": "http://www.opengeospatial.net/cite"}
         

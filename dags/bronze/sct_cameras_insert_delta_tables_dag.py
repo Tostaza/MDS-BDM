@@ -64,8 +64,13 @@ def traffic_cameras_bronze_pipeline():
         regex = rf"^{LANDING_PREFIX}/(\d{{8}}_\d{{6}})/"
         for obj in response['Contents']:
             old_key = obj['Key']
-            timestamp = re.match(regex, old_key).group(1)
-            filename = old_key.split('/')[-1]
+            
+            match = re.match(regex, old_key)
+            if match:
+                timestamp = match.group(1)
+                filename = old_key.split('/')[-1]
+            else:
+                continue
     
             try:
                 if old_key.endswith('.xml'):
