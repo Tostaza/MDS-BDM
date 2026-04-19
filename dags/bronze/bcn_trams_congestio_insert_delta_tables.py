@@ -27,19 +27,16 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         import boto3
         import json
         from deltalake import DeltaTable, write_deltalake
+        from Clients.seaweedfs import Seaweedfs
+        from DELTA_LAKE.delta_lake import DeltaLake
 
-        S3_ENDPOINT = "http://seaweedfs:8333"
-        AWS_ACCESS_KEY_ID = "admin"
-        AWS_SECRET_ACCESS_KEY = "admin"
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/trams_congestion/"
         TRUSTED_BUCKET = "trusted-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
-        
         temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
-
         storage_options = {
             "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
             "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -48,84 +45,17 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
             "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
             "AWS_ALLOW_HTTP": "true" 
         }
+        predicate="target.idTram = source.idTram" 
+        s3_client = Seaweedfs()
+        s3_client.connect()
+        delta_lake = DeltaLake()
 
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=S3_ENDPOINT,
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-        )
-
-        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX) # prefix es el nombre de la carpeta a la cual acceder para retrieve data.
-        if 'Contents' not in response:
-            print("No new files found in the Landing Zone for BCN Trams Congestion.")
-            return
-
-        all_data = []
-        processed_keys = []
-        for obj in response['Contents']:
-            key = obj['Key']
-            print(obj)
-            if key.endswith('.csv'):
-                file_obj = s3_client.get_object(Bucket=LANDING_BUCKET, Key=key)
-                file_content = file_obj['Body'].read().decode('utf-8')
-                try:
-                    data = pd.read_csv(
-                        io.StringIO(file_content),
-                        sep=';',                
-                        quotechar='"',
-                        encoding='utf-8',
-                        engine='python'         
-                    )
-                    all_data.append(data)
-                except pd.errors.ParserError:
-                    print(f"Error parsing CSV from {key}")
-
-        if not all_data:
-            print("No valid CSV data found.")
-            return
-
-        df_new = pd.concat(all_data, ignore_index=True)
-
-        try:
-            s3_client.create_bucket(Bucket=TRUSTED_BUCKET)
-        except (s3_client.exceptions.BucketAlreadyExists, s3_client.exceptions.BucketAlreadyOwnedByYou):
-            print(f"Bucket '{TRUSTED_BUCKET}' already exists")
-
-        print(df_new)
+        response = s3_client.list_all_objects(Bucket=LANDING_BUCKET, prefix=LANDING_PREFIX) # prefix es el nombre de la carpeta a la cual acceder para retrieve data.
+        df_new = pd.concat(response, ignore_index=True)
+        s3_client.create_bucket(TRUSTED_BUCKET)
         df_new = df_new.dropna(axis=1, how='all')
 
-        try:
-
-            dt = DeltaTable(persistent_path, storage_options=storage_options)
-            (
-                dt.merge(
-                    source=df_new,
-                    predicate="target.idTram = source.idTram", 
-                    source_alias="source",
-                    target_alias="target"
-                )
-                .when_matched_update_all()
-                .when_not_matched_insert_all()
-                .execute()
-            )
-            print("Data updated via MERGE successfully.")
-            
-        except Exception as table_not_found_e:
-            print(f"Table not found. Initializing for the first time... (Details: {table_not_found_e})")
-
-            try:
-                write_deltalake(
-                    persistent_path,
-                    df_new,
-                    storage_options=storage_options,
-                    mode="overwrite"
-                )
-                print("Delta table initialized successfully.")
-            
-            except OSError as bucket_not_found_e:
-                print(f"Error at creating or accessing bucket {TRUSTED_BUCKET}: {bucket_not_found_e} ")
-
+        delta_lake.coonect_and_load(df_new, persistent_path, storage_options, predicate)
     process_temporal_to_persistent()
 
 bcn_trams_congestion_temporal_to_persistent_pipeline()

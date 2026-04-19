@@ -27,18 +27,18 @@ def hf_rainfall_ingestion():
 
     REPOSITORY = "kanishka089"
     DATASET = "RainPrediction"
-    
     LANDING_BUCKET = "landing-zone"
 
     @task
     def ingest_from_hf():
         from datasets import load_dataset
+        from Extractors.csv import ExtractorCSV
         import pandas as pd
 
         client = Seaweedfs()
-        dataset = load_dataset(f"{REPOSITORY}/{DATASET}")
-        df = dataset["train"].to_pandas()
-
+        client.connect()
+        extractor = ExtractorCSV()
+        df, _ = extractor.extract_data(f"{REPOSITORY}/{DATASET}","HuggingFace")
         key = f"huggingface/{REPOSITORY}/{DATASET}.csv"
         client.upload_dataframe(LANDING_BUCKET, key, df)
         print(f"Uploaded {REPOSITORY}/{DATASET} dataset to {LANDING_BUCKET}")

@@ -24,9 +24,8 @@ def sct_traffic_incidents_bronze_pipeline():
     @task(task_id='move_and_catalog_task')
     def move_and_catalog():
         import pandas as pd
-        import boto3
-        from deltalake import write_deltalake, DeltaTable
-        import re
+        from Clients.seaweedfs import Seaweedfs
+        from DELTA_LAKE.delta_lake import DeltaLake
 
         S3_ENDPOINT = "http://seaweedfs:8333"
         AWS_SECRET_ACCESS_KEY = "admin"
@@ -46,23 +45,18 @@ def sct_traffic_incidents_bronze_pipeline():
             "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
             "AWS_ALLOW_HTTP": "true" 
         }
+        
+        predicate = "target.file_name = source.file_name"
 
-        s3_client = boto3.client(
-            's3',
-            endpoint_url=S3_ENDPOINT,
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY
-        )
-
-        response = s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
+        s3_client = Seaweedfs()
+        s3_client.connect()
+        delta_lake = DeltaLake()
+        response = s3_client.s3_client.list_objects_v2(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
         if 'Contents' not in response:
             print("No new files found in the Landing Zone for SCT Traffic Incidents.")
             return
-
         persistent_path_xml = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
-        
         metadata_xml = []
-
         for obj in response['Contents']:
             key = obj['Key']
 
@@ -78,32 +72,8 @@ def sct_traffic_incidents_bronze_pipeline():
                 })
 
         df_new = pd.DataFrame(metadata_xml)
-
-        try:
-            dt = DeltaTable(persistent_path_xml, storage_options=storage_options)
-
-            (
-                dt.merge(
-                    source=df_new,
-                    predicate="target.file_name = source.file_name", 
-                    source_alias="source",
-                    target_alias="target"
-                )
-                .when_not_matched_insert_all()
-                .execute()
-            )
-
-            print("Data inserted via MERGE successfully.")
-        except Exception as e:
-            print(f"Table not found. Initializing... ({e})")
-            write_deltalake(
-                persistent_path_xml,
-                df_new,
-                storage_options=storage_options,
-                mode="overwrite"
-            )
-
-            print("Delta table initialized successfully.")
+        s3_client.create_bucket(TRUSTED_BUCKET)
+        delta_lake.coonect_and_load(df_new, persistent_path_xml, storage_options, predicate)
         
     move_and_catalog()
 

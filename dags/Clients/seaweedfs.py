@@ -54,6 +54,34 @@ class Seaweedfs(Client):
             Body=buffer.getvalue(),
         )
 
+    def list_all_objects(self, Bucket:str = None, prefix: str = None):
+        if Bucket is None or prefix is None:
+            Print("Missing Bucket or prefix for SeaWeedFS client")
+            return
+        response = s3_client.list_objects_v2(Bucket=Bucket, Prefix=prefix)
+        if 'Contents' not in response:
+            print("No new files found in the Landing Zone.")
+            return
+
+        all_data = []
+        processed_keys = []
+        for obj in response['Contents']:
+            key = obj['Key']
+            if key.endswith('.json'):
+                file_obj = s3_client.get_object(Bucket=LANDING_BUCKET, Key=key)
+                file_content = file_obj['Body'].read().decode('utf-8')
+                try:
+                    data = json.loads(file_content)
+                    all_data.append(data)
+                    # processed_keys.append(key)
+                except json.JSONDecodeError:
+                    print(f"Error decoding JSON from {key}")
+
+        if not all_data:
+            print("No valid JSON data found.")
+            return None
+        return all_data
+
 
 # ---
 

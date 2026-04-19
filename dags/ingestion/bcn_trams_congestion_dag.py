@@ -28,17 +28,17 @@ def ingest_trams_congestion():
     @task
     def ingest_data(**context):
         from Clients.seaweedfs import Seaweedfs
+        from Extractors.json import ExtractorJSON
         import pandas as pd
         import io
 
         LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
+        client.connect()
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=trams"
-        response = requests.get(catalog_url)
-        response.raise_for_status()
-        
-        catalog_json = response.json()
+        extractor = ExtractorJSON()
+        catalog_json = extractor.extract_data(catalog_url)
         result = catalog_json["result"]
     
         url = result["resources"][1]["url"]

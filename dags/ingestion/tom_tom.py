@@ -35,42 +35,20 @@ def ingest_trams_congestion():
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
+        from Extractors.json import ExtractorJSON
         import pandas as pd
         import io
 
         LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
+        client.connect()
+        extractor = ExtractorJSON()
 
         API_KEY = "Ai9JDYMoWhb7kxbTynVYrXRnJxQdXAGa"
         url = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
         points = load_json_points()
 
-        data = []
-        for point in points:
-            
-            point_to_search = f"{point['lat']},{point['lon']}"
-            print(point_to_search)
-            params = {
-                "key": API_KEY,
-                "point": point_to_search,
-                "unit": "KMPH",
-                "openLr": "false",
-            }
-            response = requests.get(url, params=params, timeout=30)
-            response = response.json()
-            print(response)
-            flow = response["flowSegmentData"]
-
-            data.append({
-                "currentSpeed": flow["currentSpeed"],
-                "free_flow_speed": flow["freeFlowSpeed"],
-                "currentTravelTime": flow["currentTravelTime"],
-                "free_flow_time": flow["freeFlowTravelTime"],
-                "road_close": flow["roadClosure"],
-                "latitude": point['lat'],
-                "longitude": point['lon']
-            })
-
+        data, _ = extractor.extract_real_time_data(url, "TomTom", API_KEY)
         df = pd.DataFrame(data)
         key = "TOMTOM/tomtom_maps_coordinator.csv"
         client.upload_dataframe(LANDING_BUCKET, key, df)

@@ -45,9 +45,12 @@ class ExtractorRealTime(Extractor):
     def extract_data(self, api_endpoint):
         pass
 
-    def extract_real_time_data(self, api_endpoint, type):
+    def extract_real_time_data(self, api_endpoint, type, api_key : str = None):
         if type == "TomTom":
-            return self.extract_data_Tom_Tom(api_endpoint)
+            if api_key is None:
+                print("Error, missing API KEY FOR TOM TOM")
+                return
+            return self.extract_data_Tom_Tom(api_endpoint, api_key)
         elif type == "Google":
             return self.extract_data_google(api_endpoint)
         elif type == 'xml':
@@ -71,14 +74,14 @@ class ExtractorRealTime(Extractor):
             raise
 
 
-    def extract_data_Tom_Tom(self, api_data):
+    def extract_data_Tom_Tom(self, api_data, api_key):
         points = self.load_points()
         results = []
 
         for p in points:
             time.sleep(0.1)
             params = {
-                "key": "TOKEN",
+                "key": api_key,
                 "point": f"{p['lat']},{p['lon']}",
                 "unit": "KMPH"
             }
