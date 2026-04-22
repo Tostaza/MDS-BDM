@@ -1,5 +1,6 @@
 from airflow.decorators import dag, task
 from datetime import datetime, timedelta
+from airflow.models import Variable
 import os
 import io
 
@@ -27,14 +28,14 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         from Clients.seaweedfs import Seaweedfs
         from DELTA_LAKE.delta_lake import DeltaLake
 
-        S3_ENDPOINT = "http://seaweedfs:8333"
-        AWS_ACCESS_KEY_ID = "admin"
-        AWS_SECRET_ACCESS_KEY = "admin"
+        S3_ENDPOINT = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
+        AWS_ACCESS_KEY_ID = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
+        AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
         
         LANDING_BUCKET = "landing-zone"
-        LANDING_PREFIX = "TOMTOM/tomtom_maps_coordinator"
+        LANDING_PREFIX = "TOMTOM/"
         TRUSTED_BUCKET = "trusted-zone"
-        TRUSTED_PREFIX = LANDING_PREFIX
+        TRUSTED_PREFIX = "TOMTOM/"
         
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
 
@@ -47,21 +48,23 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
             "AWS_ALLOW_HTTP": "true" 
         }
         
-        predicate = """
-            target.latitude = source.latitude AND
-            target.longitude = source.longitude
-        """
+        predicate = "target.point_id = source.point_id"
 
         s3_client = Seaweedfs()
         s3_client.connect()
         delta_lake = DeltaLake()
 
-        response = s3_client.list_all_objects(Bucket=LANDING_BUCKET, prefix=LANDING_PREFIX) # prefix es el nombre de la carpeta a la cual acceder para retrieve data.
-        df_new = pd.concat(response, ignore_index=True)
+        response = s3_client.list_all_objects(LANDING_BUCKET, LANDING_PREFIX)
+        
+        if not response:
+            print("No s'han trobat dades noves per processar.")
+            return
+
+        df_new = pd.DataFrame(response)
 
         s3_client.create_bucket(TRUSTED_BUCKET)
 
-        delta_lake.coonect_and_load(df_new, persistent_path, storage_options, predicate)
+        delta_lake.connect_and_load(df_new, persistent_path, storage_options, predicate)
 
     process_temporal_to_persistent()
 

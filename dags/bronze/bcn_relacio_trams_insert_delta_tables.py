@@ -1,5 +1,6 @@
 from airflow.decorators import dag, task
 from datetime import datetime, timedelta
+from airflow.models import Variable
 import os
 import io
 
@@ -28,7 +29,10 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
         import json
         from deltalake import DeltaTable, write_deltalake
         from Clients.seaweedfs import Seaweedfs
-        from DELTA_LAKE.deltalake import DeltaLake
+        from DELTA_LAKE.delta_lake import DeltaLake
+        AWS_ACCESS_KEY_ID = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
+        AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
+        S3_ENDPOINT = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/relacio_trams/"
@@ -48,10 +52,15 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
         s3_client = Seaweedfs()
         s3_client.connect()
         delta_lake = DeltaLake()
-        response = s3_client.list_all_objects(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
-        df_new = pd.concat(response, ignore_index=True)
+        response = s3_client.list_all_objects(LANDING_BUCKET, LANDING_PREFIX)
+        
+        if not response:
+            print("No s'han trobat dades noves per processar.")
+            return
+
+        df_new = pd.DataFrame(response)
         s3_client.create_bucket(TRUSTED_BUCKET)
-        delta_lake.coonect_and_load(df_new, persistent_path, storage_options, predicate)
+        delta_lake.connect_and_load(df_new, persistent_path, storage_options, predicate)
 
     process_temporal_to_persistent()
 

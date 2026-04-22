@@ -1,5 +1,6 @@
 from airflow.decorators import dag, task
 from datetime import datetime, timedelta
+from airflow.models import Variable
 import os
 import io
 
@@ -27,9 +28,9 @@ def sct_traffic_incidents_bronze_pipeline():
         from Clients.seaweedfs import Seaweedfs
         from DELTA_LAKE.delta_lake import DeltaLake
 
-        S3_ENDPOINT = "http://seaweedfs:8333"
-        AWS_SECRET_ACCESS_KEY = "admin"
-        AWS_ACCESS_KEY_ID = "admin"
+        S3_ENDPOINT = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
+        AWS_ACCESS_KEY_ID = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
+        AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "sct/traffic_incidents/"
@@ -73,7 +74,7 @@ def sct_traffic_incidents_bronze_pipeline():
 
         df_new = pd.DataFrame(metadata_xml)
         s3_client.create_bucket(TRUSTED_BUCKET)
-        delta_lake.coonect_and_load(df_new, persistent_path_xml, storage_options, predicate)
+        delta_lake.connect_and_load(df_new, persistent_path_xml, storage_options, predicate)
         
     move_and_catalog()
 

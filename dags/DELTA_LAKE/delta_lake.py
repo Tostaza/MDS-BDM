@@ -8,7 +8,7 @@ from deltalake import DeltaTable, write_deltalake
 
 class DeltaLake():
 
-    def coonect_and_load(self, df_new, persistent_path, storage_options, predicate):
+    def connect_and_load(self, df_new, persistent_path, storage_options, predicate):
         try:
             dt = DeltaTable(persistent_path, storage_options=storage_options)
             (

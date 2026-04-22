@@ -47,10 +47,21 @@ def ingest_trams_congestion():
         API_KEY = "Ai9JDYMoWhb7kxbTynVYrXRnJxQdXAGa"
         url = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
         points = load_json_points()
+        all_data = []
 
-        data, _ = extractor.extract_real_time_data(url, "TomTom", API_KEY)
-        df = pd.DataFrame(data)
-        key = "TOMTOM/tomtom_maps_coordinator.csv"
+        for p in points:
+            # Adding mandatory 'point' parameter for TomTom flowSegmentData
+            point_str = f"{p['lat']},{p['lon']}"
+            res_json, _ = extractor.extract_real_time_data(url, "TomTom", API_KEY, params={"point": point_str})
+            
+            # Extract the actual flow information and attach point metadata
+            flow_data = res_json.get("flowSegmentData", {})
+            flow_data["point_id"] = p["id"]
+            flow_data["point_name"] = p["name"]
+            all_data.append(flow_data)
+
+        df = pd.DataFrame(all_data)
+        key = "TOMTOM/tomtom_flow_data.csv"
         client.upload_dataframe(LANDING_BUCKET, key, df)
 
 

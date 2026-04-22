@@ -28,6 +28,7 @@ def ingest_trams_congestion():
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
+        from Extractors.json import ExtractorJSON
         import pandas as pd
         import io
 

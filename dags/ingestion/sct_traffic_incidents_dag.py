@@ -30,7 +30,7 @@ def sct_traffic_incidents_ingestion():
         from kafka.errors import TopicAlreadyExistsError
         from kafka import KafkaProducer
         import json
-        from Kafka import Kafka
+        from Kafka.Kafka import Kafka
         LANDING_BUCKET = "landing-zone"
 
         logical_date = context['logical_date']

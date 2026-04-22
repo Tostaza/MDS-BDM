@@ -1,5 +1,6 @@
 from airflow.decorators import dag, task
 from datetime import datetime, timedelta
+from airflow.models import Variable
 import os
 
 default_args = {
@@ -29,9 +30,14 @@ def aemet_temporal_to_persistent_pipeline():
         from deltalake import DeltaTable, write_deltalake
         from DELTA_LAKE.delta_lake import DeltaLake
 
+        AWS_ACCESS_KEY_ID = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
+        AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
+        S3_ENDPOINT = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "aemet/"
-        persistent_path = "s3://trusted-zone/aemet_predictions/"
+        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_PREFIX = LANDING_PREFIX
+        persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
         storage_options = {
             "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
             "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -44,7 +50,8 @@ def aemet_temporal_to_persistent_pipeline():
 
         s3_client = Seaweedfs()
         s3_client.connect()
-        all_data = s3_client.list_all_objects(Bucket=LANDING_BUCKET, Prefix=LANDING_PREFIX)
+        delta_lake = DeltaLake()
+        all_data = s3_client.list_all_objects(LANDING_BUCKET, LANDING_PREFIX)
         df_new = pd.DataFrame(all_data)
 
         for col in df_new.columns:
@@ -54,7 +61,7 @@ def aemet_temporal_to_persistent_pipeline():
         if 'id' not in df_new.columns or 'elaborado' not in df_new.columns:
             raise ValueError("Required keys ('id', 'elaborado') missing from AEMET data.")
         
-        delta_lake.coonect_and_load(df_new, persistent_path, storage_options, predicate)
+        delta_lake.connect_and_load(df_new, persistent_path, storage_options, predicate)
 
     process_temporal_to_persistent()
 

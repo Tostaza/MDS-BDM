@@ -42,7 +42,7 @@ class ExtractorRealTime(Extractor):
         except:
             return 0
 
-    def extract_data(self, api_endpoint):
+    def extract_data(self, api_endpoint, params=None, headers=None):
         pass
 
     def extract_real_time_data(self, api_endpoint, type, api_key : str = None):

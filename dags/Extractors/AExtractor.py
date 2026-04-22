@@ -6,8 +6,9 @@ from dataclasses import dataclass
 class Extractor(ABC):
     
     @abstractmethod
-    def extract_data(self, api_endpoint):
+    def extract_data(self, api_endpoint, params=None, headers=None):
         pass
+
     @abstractmethod
-    def extract_real_time_data(self, api_endpoint, type):
+    def extract_real_time_data(self, api_endpoint, type, api_key=None):
         pass

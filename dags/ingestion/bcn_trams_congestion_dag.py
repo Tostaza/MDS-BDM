@@ -38,7 +38,7 @@ def ingest_trams_congestion():
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=trams"
         extractor = ExtractorJSON()
-        catalog_json = extractor.extract_data(catalog_url)
+        catalog_json, _ = extractor.extract_data(catalog_url)
         result = catalog_json["result"]
     
         url = result["resources"][1]["url"]

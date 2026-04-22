@@ -41,6 +41,7 @@ def aemet_ingestion_workflow():
     def fetch_weather_predictions_hourly(city_code: str, **context):
         
         aemet_api_key = Variable.get("AEMET_API_KEY", default_var=os.getenv("AEMET_API_KEY"))
+        print(f"Longitud de la API_KEY: {len(aemet_api_key) if aemet_api_key else 0}")
         if not aemet_api_key:
             raise ValueError("AEMET_API_KEY is missing. Configure it in Airflow Variables or as an environment variable.")
 
@@ -49,7 +50,7 @@ def aemet_ingestion_workflow():
         headers = {'cache-control': "no-cache"}
 
         extractor = ExtractorJSON()
-        response_json = extractor.extract_data(url, querystring, headers)
+        response_json, _ = extractor.extract_data(url, querystring, headers)
 
         if response_json.get("estado") != 200:
             raise Exception(f"Error while retrieving data from api: {response_json.get('descripcion')}")
@@ -62,8 +63,14 @@ def aemet_ingestion_workflow():
 
         seaweedfs = Seaweedfs()
         seaweedfs.connect()
+        print(weather_data)
 
+        # 1. Get the JSON data from the tuple (json_data, filename)
         weather_data = weather_data[0]
+        # 2. Get the dictionary from the list returned by AEMET: [{...}]
+        if isinstance(weather_data, list):
+            weather_data = weather_data[0]
+            
         dt = datetime.fromisoformat(weather_data['elaborado'])
         year = dt.strftime("%Y")
         month = dt.strftime("%m")
