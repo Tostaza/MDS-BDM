@@ -35,44 +35,33 @@ def ingest_trams_congestion():
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
+        from Extractors.json import ExtractorJSON
         import pandas as pd
         import io
 
         LANDING_BUCKET = "landing-zone"
         client = Seaweedfs()
+        client.connect()
+        extractor = ExtractorJSON()
 
         API_KEY = "Ai9JDYMoWhb7kxbTynVYrXRnJxQdXAGa"
         url = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
         points = load_json_points()
+        all_data = []
 
-        data = []
-        for point in points:
+        for p in points:
+            # Adding mandatory 'point' parameter for TomTom flowSegmentData
+            point_str = f"{p['lat']},{p['lon']}"
+            res_json, _ = extractor.extract_real_time_data(url, "TomTom", API_KEY, params={"point": point_str})
             
-            point_to_search = f"{point['lat']},{point['lon']}"
-            print(point_to_search)
-            params = {
-                "key": API_KEY,
-                "point": point_to_search,
-                "unit": "KMPH",
-                "openLr": "false",
-            }
-            response = requests.get(url, params=params, timeout=30)
-            response = response.json()
-            print(response)
-            flow = response["flowSegmentData"]
+            # Extract the actual flow information and attach point metadata
+            flow_data = res_json.get("flowSegmentData", {})
+            flow_data["point_id"] = p["id"]
+            flow_data["point_name"] = p["name"]
+            all_data.append(flow_data)
 
-            data.append({
-                "currentSpeed": flow["currentSpeed"],
-                "free_flow_speed": flow["freeFlowSpeed"],
-                "currentTravelTime": flow["currentTravelTime"],
-                "free_flow_time": flow["freeFlowTravelTime"],
-                "road_close": flow["roadClosure"],
-                "latitude": point['lat'],
-                "longitude": point['lon']
-            })
-
-        df = pd.DataFrame(data)
-        key = "TOMTOM/tomtom_maps_coordinator.csv"
+        df = pd.DataFrame(all_data)
+        key = "TOMTOM/tomtom_flow_data.csv"
         client.upload_dataframe(LANDING_BUCKET, key, df)
 
 

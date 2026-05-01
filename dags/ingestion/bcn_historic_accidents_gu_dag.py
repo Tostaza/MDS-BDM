@@ -28,19 +28,19 @@ def ingest_accidents_gu():
     @task
     def ingest_data():
         from Clients.seaweedfs import Seaweedfs
+        from Extractors.json import ExtractorJSON
         import pandas as pd
         import io
 
         LANDING_BUCKET = "landing-zone"
 
         catalog_url = f"https://opendata-ajuntament.barcelona.cat/data/api/3/action/package_show?id=accidents-gu-bcn"
-        response = requests.get(catalog_url)
-        response.raise_for_status()
-        
-        catalog_json = response.json()
+        extractor = ExtractorJSON()
+        catalog_json, _ = extractor.extract_data(catalog_url)
         result = catalog_json["result"]
 
         client = Seaweedfs()
+        client.connect()
     
         years = 5
         # In the catalog, results are ordered by year (e.g. [2025, 2024, 2023...])
