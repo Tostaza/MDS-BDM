@@ -52,13 +52,18 @@ def ingest_trams_congestion():
         
         df = pd.read_csv(io.StringIO(response.text))
 
+        logical_ts = context["logical_date"].strftime("%Y%m%d_%H%M%S")
+        base_name = name.rsplit(".", 1)[0] if "." in name else name
+        landing_key = f"ajuntament_bcn/trams_congestion/real_time/{base_name}_{logical_ts}.csv"
+        client.upload_dataframe(LANDING_BUCKET, landing_key, df)
+
         client_kafka = Kafka()
         client_kafka.connect('trams_congestion')
         client_kafka.load_to_kafka(df)
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
-        task_id='trigger_bcn_trams_congestion_temporal_to_persistent',
-        trigger_dag_id='bcn_trams_congestion_temporal_to_persistent',
+        task_id='trigger_bcn_trams_congestion_real_time_temporal_to_persistent',
+        trigger_dag_id='bcn_trams_congestion_real_time_temporal_to_persistent',
         wait_for_completion=False
     )
 

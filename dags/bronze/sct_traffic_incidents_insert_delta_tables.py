@@ -35,7 +35,7 @@ def sct_traffic_incidents_bronze_pipeline():
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "sct/traffic_incidents/"
         
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = "sct/traffic_incidents/"
         
         storage_options = {

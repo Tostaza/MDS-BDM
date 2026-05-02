@@ -34,7 +34,7 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "TOMTOM/"
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = "TOMTOM/"
         
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"

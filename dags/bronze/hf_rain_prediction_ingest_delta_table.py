@@ -43,7 +43,7 @@ def hf_rain_temporal_to_persistent():
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "huggingface/kanishka089/"
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
         
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
@@ -70,7 +70,7 @@ def hf_rain_temporal_to_persistent():
 
         s3_client.create_bucket(TRUSTED_BUCKET)
 
-        delta_lake.coonect_and_load(df_new, persistent_path, storage_options, merge_condition)
+        delta_lake.connect_and_load(df_new, persistent_path, storage_options, merge_condition)
 
     process_temporal_to_persistent()
 

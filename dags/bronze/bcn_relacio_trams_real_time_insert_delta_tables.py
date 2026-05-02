@@ -36,7 +36,7 @@ def bcn_relacio_trams_real_time_temporal_to_persistent():
         S3_ENDPOINT = Variable.get("S3_ENDPOINT", default_var=os.getenv("S3_ENDPOINT"))
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/relacio_trams/real_time/"
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
         temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"

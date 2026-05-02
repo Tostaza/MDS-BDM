@@ -34,7 +34,7 @@ def traffic_cameras_bronze_pipeline():
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "traffic_cameras"
         
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = "traffic_cameras"
         
         storage_options = {

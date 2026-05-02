@@ -4,6 +4,7 @@ import json
 import os
 from .client import Client
 import boto3
+import pandas as pd
 from io import BytesIO, StringIO
 
 
@@ -67,14 +68,19 @@ class Seaweedfs(Client):
         if self.s3_client is None:
             self.connect()
 
-        response = self.s3_client.list_objects_v2(Bucket=Bucket, Prefix=Prefix)
-        if 'Contents' not in response:
+        paginator = self.s3_client.get_paginator("list_objects_v2")
+        pages = paginator.paginate(Bucket=Bucket, Prefix=Prefix)
+        object_keys = []
+        for page in pages:
+            for obj in page.get("Contents", []):
+                object_keys.append(obj["Key"])
+
+        if not object_keys:
             print("No new files found in the Landing Zone.")
             return
 
         all_data = []
-        for obj in response['Contents']:
-            key = obj['Key']
+        for key in object_keys:
             if key.endswith('.json'):
                 file_obj = self.s3_client.get_object(Bucket=Bucket, Key=key)
                 file_content = file_obj['Body'].read().decode('utf-8')
@@ -83,9 +89,17 @@ class Seaweedfs(Client):
                     all_data.append(data)
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON from {key}")
+            elif key.endswith('.csv'):
+                file_obj = self.s3_client.get_object(Bucket=Bucket, Key=key)
+                file_content = file_obj['Body'].read().decode('utf-8')
+                try:
+                    df = pd.read_csv(StringIO(file_content))
+                    all_data.extend(df.to_dict('records'))
+                except Exception as e:
+                    print(f"Error reading CSV from {key}: {e}")
 
         if not all_data:
-            print("No valid JSON data found.")
+            print("No valid JSON or CSV data found.")
             return None
         return all_data
 

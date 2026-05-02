@@ -36,7 +36,7 @@ def bcn_trams_congestion_temporal_to_persistent_pipeline():
         AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/trams_congestion/"
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
         temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"

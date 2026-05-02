@@ -38,7 +38,7 @@ def transit_temporal_to_persistent_pipeline():
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "transit_posts/"
         
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
 
         temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"

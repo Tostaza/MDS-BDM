@@ -43,7 +43,7 @@ def bcn_trams_congestion_real_time_temporal_to_persistent():
         
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/trams_congestion/real_time/"
-        TRUSTED_BUCKET = "trusted-zone"
+        TRUSTED_BUCKET = "persistent-landing-zone"
         TRUSTED_PREFIX = LANDING_PREFIX
         
         persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
@@ -66,7 +66,7 @@ def bcn_trams_congestion_real_time_temporal_to_persistent():
             print("No valid data found.")
             return
 
-        df_new = pd.concat(response, ignore_index=True)
+        df_new = pd.DataFrame(response)
 
         s3_client.create_bucket(TRUSTED_BUCKET)
         
