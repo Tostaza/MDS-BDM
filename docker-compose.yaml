@@ -65,6 +65,7 @@ services:
     env_file: .env
     networks:
       - bdm-network
+      - default
 
   # ----------------------------------------- KAFKA ----------------------------------------- #
 
@@ -166,6 +167,8 @@ services:
     volumes:
       - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
       - ./notebooks:/opt/spark/work-dir/notebooks
+      - ./trusted-zone:/opt/spark/work-dir/trusted-zone
+      - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
     networks:
       - bdm-network
     depends_on:
@@ -478,6 +481,8 @@ services:
       volumes:
         - ./notebooks:/opt/spark/work-dir/notebooks
         - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+        - ./trusted-zone:/opt/spark/work-dir/trusted-zone
+        - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
       networks:
         - bdm-network
       depends_on:
