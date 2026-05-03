@@ -175,6 +175,55 @@ services:
       - spark-master
     restart: unless-stopped
 
+  # ----------------------------------------- CHROMA + ML / DASHBOARD ----------------------------------------- #
+
+  chromadb:
+    image: chromadb/chroma:0.5.5
+    container_name: chromadb
+    ports:
+      - "8000:8000"
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - chroma-data:/chroma/chroma
+    networks:
+      - bdm-network
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./presentation-layer
+      dockerfile: Dockerfile
+    image: bdm-dashboard:latest
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - S3_ENDPOINT=http://seaweedfs:8333
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=admin
+      - TRUSTED_BUCKET=trusted-zone
+      - EXPLOITATION_BUCKET=exploitation-zone
+      - DATA_PREFIX=
+      # Prefijos Parquet en exploitation para pestañas ML (opcional; valores por defecto en app.py)
+      - ACCIDENTS_GU_ML_PREFIX=ajuntament_bcn/accidents_gu/
+      - AEMET_ML_PREFIX=aemet/
+      - HF_RAIN_ML_PREFIX=huggingface/kanishka089/
+      - KAGGLE_ML_PREFIX=
+    volumes:
+      - ./presentation-layer:/app
+      - ./trusted-zone:/trusted-zone:ro
+      - ./exploitation-zone:/exploitation-zone:ro
+    networks:
+      - bdm-network
+    depends_on:
+      - chromadb
+      - seaweedfs
+    restart: unless-stopped
+
   # ----------------------------------------- AIRFLOW ----------------------------------------- #
 
   postgres:
@@ -475,6 +524,8 @@ services:
         - "8889:8888"
       environment:
         - SPARK_NO_DAEMONIZE=true
+        - CHROMA_HOST=chromadb
+        - CHROMA_PORT=8000
       command: >
         jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser 
         --allow-root --NotebookApp.token='' --NotebookApp.password=''
@@ -483,15 +534,18 @@ services:
         - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
         - ./trusted-zone:/opt/spark/work-dir/trusted-zone
         - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
+        - ./presentation-layer:/opt/spark/work-dir/presentation-layer
       networks:
         - bdm-network
       depends_on:
         - seaweedfs
+        - chromadb
       restart: unless-stopped
 
 volumes:
   seaweedfs-data:
   postgres-db-volume:
+  chroma-data:
 
 networks:
   bdm-network:
