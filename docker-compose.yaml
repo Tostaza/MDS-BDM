@@ -63,6 +63,8 @@ services:
     volumes:
       - seaweedfs-data:/data
     env_file: .env
+    networks:
+      - bdm-network
 
   # ----------------------------------------- KAFKA ----------------------------------------- #
 
@@ -126,6 +128,48 @@ services:
       - kafka
     #     condition: service_healthy
         
+    restart: unless-stopped
+
+
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bdm-spark:3.3.4
+    container_name: spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+      - "8890:8888"
+    volumes:
+      - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+    networks:
+      - bdm-network
+    depends_on:
+      - seaweedfs
+    restart: unless-stopped
+ 
+  spark-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bdm-spark:3.3.4
+    container_name: spark-worker
+    environment:
+      - SPARK_WORKER_MEMORY=2g
+      - SPARK_WORKER_CORES=2
+      - SPARK_NO_DAEMONIZE=true
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    volumes:
+      - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./notebooks:/opt/spark/work-dir/notebooks
+    networks:
+      - bdm-network
+    depends_on:
+      - spark-master
     restart: unless-stopped
 
   # ----------------------------------------- AIRFLOW ----------------------------------------- #
@@ -418,11 +462,32 @@ services:
     depends_on:
       kafka:
         condition: service_started
-        
+
+  jupyter:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      container_name: jupyter
+      ports:
+        - "8889:8888"
+      environment:
+        - SPARK_NO_DAEMONIZE=true
+      command: >
+        jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser 
+        --allow-root --NotebookApp.token='' --NotebookApp.password=''
+      volumes:
+        - ./notebooks:/opt/spark/work-dir/notebooks
+        - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      networks:
+        - bdm-network
+      depends_on:
+        - seaweedfs
+      restart: unless-stopped
+
 volumes:
   seaweedfs-data:
   postgres-db-volume:
 
-# networks:
-#   broker-kafka:
-#     driver: bridge
+networks:
+  bdm-network:
+    driver: bridge

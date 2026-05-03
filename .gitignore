@@ -9,4 +9,5 @@ logs/*
 services/airflow/logs/*
 
 !.gitignore
+!.gitattributes
 !.dockerignore
