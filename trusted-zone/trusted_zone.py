@@ -39,6 +39,28 @@ def _env(name: str, default: str) -> str:
     value = os.environ.get(name)
     return value if value is not None and value != "" else default
 
+def ensure_bucket_exists(bucket: str) -> None:
+    """Crea el bucket a SeaweedFS si no existeix."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    endpoint = _env("S3A_ENDPOINT", "http://seaweedfs:8333")
+    access_key = _env("S3A_ACCESS_KEY", "admin")
+    secret_key = _env("S3A_SECRET_KEY", "admin")
+
+    s3 = boto3.client(
+        's3',
+        endpoint_url=endpoint,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+    )
+    try:
+        s3.head_bucket(Bucket=bucket)
+        print(f"Bucket '{bucket}' exists.")
+    except ClientError:
+        s3.create_bucket(Bucket=bucket)
+        print(f"Bucket '{bucket}' created.")
+
 
 def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> SparkSession:
     """
@@ -86,6 +108,24 @@ def trusted_base_uri() -> str:
     return f"{base}/{prefix}/" if prefix else f"{base}/"
 
 
+def _java_s3a_path(hpath_ctor, uri: str):
+    """
+    Construye un org.apache.hadoop.fs.Path válido para S3A.
+
+    Si haces rstrip('/') sobre `s3a://bucket/` obtienes `s3a://bucket` (sin path) y
+    Hadoop/S3A lanza IllegalArgumentException: path must be absolute al usar exists/listStatus.
+    Por eso, en la raíz del bucket forzamos siempre la barra final.
+    """
+    s = (uri or "").strip()
+    if not s:
+        raise ValueError("URI vacía para Path de Hadoop")
+    if s.startswith("s3a://"):
+        after_scheme = s[6:]
+        if "/" not in after_scheme:
+            s = f"s3a://{after_scheme}/"
+    return hpath_ctor(s)
+
+
 def _is_hive_partition_dir(name: str) -> bool:
     """
     Heurística tipo Hive: carpeta `clave=valor`.
@@ -109,7 +149,14 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
     jvm = spark.sparkContext._jvm
     hpath = jvm.org.apache.hadoop.fs.Path
     hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()
-    base_path = hpath(base_uri.rstrip("/"))
+    hadoop_conf.set("fs.s3a.endpoint", _env("S3A_ENDPOINT", "http://seaweedfs:8333"))
+    hadoop_conf.set("fs.s3a.access.key", _env("S3A_ACCESS_KEY", "admin"))
+    hadoop_conf.set("fs.s3a.secret.key", _env("S3A_SECRET_KEY", "admin"))
+    hadoop_conf.set("fs.s3a.path.style.access", "true")
+    hadoop_conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+    hadoop_conf.set("fs.s3a.connection.ssl.enabled", "false")
+    hadoop_conf.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+    base_path = _java_s3a_path(hpath, base_uri)
     fs = base_path.getFileSystem(hadoop_conf)
 
     if not fs.exists(base_path):
@@ -117,7 +164,7 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
         return []
 
     def walk(path_str: str) -> list[str]:
-        p = hpath(path_str.rstrip("/"))
+        p = _java_s3a_path(hpath, path_str)
         if not fs.exists(p):
             return []
         statuses = fs.listStatus(p)
@@ -180,6 +227,8 @@ def main() -> None:
         if not roots:
             print(f"No se encontraron carpetas Parquet bajo: {landing_base}")
             return
+
+        ensure_bucket_exists(_env("TRUSTED_BUCKET", "trusted-zone"))
 
         print(f"Base landing:  {landing_base}")
         print(f"Base trusted: {trusted_base}")
