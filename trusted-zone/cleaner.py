@@ -148,6 +148,6 @@ class Cleaner:
             expr = F.trim(col) if trim else col
             # nullif(expr, "") devuelve NULL cuando el resultado es cadena vacía.
             if empty_as_null:
-                expr = F.nullif(expr, F.lit(""))
+                expr = F.when(expr == "", None).otherwise(expr)
             out = out.withColumn(field.name, expr)
         return out
