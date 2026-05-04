@@ -7,7 +7,12 @@ trusted-zone (misma jerarquía de carpetas, datos limpios).
 
 Ejecución típica (desde la raíz del repo):
 
-    python trusted-zone/trusted-zone.py
+    python trusted-zone/trusted_zone.py
+
+spark-submit (Docker): la **arrel del repo** ha d'estar al PYTHONPATH (paquet `spark_client/` al costat de `trusted-zone/`).
+
+    export PYTHONPATH=/opt/spark/work-dir:/opt/spark/work-dir/dags
+    spark-submit --master spark://spark-master:7077 /opt/spark/work-dir/trusted-zone/trusted_zone.py
 
 Variables de entorno opcionales:
     S3A_ENDPOINT          URL del API S3 de SeaweedFS (ej. http://seaweedfs:8333 en Docker)
@@ -27,12 +32,17 @@ from pathlib import Path
 
 from pyspark.sql import SparkSession
 
-# Mismo directorio que cleaner.py (el nombre con guion impide usarlo como paquete estándar).
+# `trusted-zone/` (cleaner) + arrel del repo (`spark_client/`, un sol lloc reutilitzable).
 _SCRIPT_DIR = Path(__file__).resolve().parent
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
+_REPO_WORK = _SCRIPT_DIR.parent
+
+for _p in (_REPO_WORK, _SCRIPT_DIR):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.insert(0, _s)
 
 from cleaner import CleanOptions, Cleaner  # noqa: E402
+from spark_client import SparkClient  # noqa: E402
 
 
 def _env(name: str, default: str) -> str:
@@ -62,33 +72,20 @@ def ensure_bucket_exists(bucket: str) -> None:
         print(f"Bucket '{bucket}' created.")
 
 
-def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> SparkSession:
+def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> SparkClient:
     """
-    Crea (o reutiliza) una SparkSession con el filesystem S3A apuntando a SeaweedFS.
+    Crea un SparkClient configurado para S3A/SeaweedFS.
 
     El endpoint por defecto usa el hostname Docker `seaweedfs`. Si ejecutas Spark
     en tu máquina contra SeaweedFS expuesto en el puerto 8333, define S3A_ENDPOINT
     con http://127.0.0.1:8333 (o el host que uses).
     """
-    endpoint = _env("S3A_ENDPOINT", "http://seaweedfs:8333")
-    access_key = _env("S3A_ACCESS_KEY", "admin")
-    secret_key = _env("S3A_SECRET_KEY", "admin")
-    master = _env("SPARK_MASTER", "local[*]")
-
-    return (
-        SparkSession.builder.appName(app_name)
-        .master(master)
-        .config("spark.hadoop.fs.s3a.endpoint", endpoint)
-        .config("spark.hadoop.fs.s3a.access.key", access_key)
-        .config("spark.hadoop.fs.s3a.secret.key", secret_key)
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .config(
-            "spark.hadoop.fs.s3a.aws.credentials.provider",
-            "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
-        )
-        .getOrCreate()
+    return SparkClient(
+        app_name=app_name,
+        master=_env("SPARK_MASTER", "local[*]"),
+        endpoint=_env("S3A_ENDPOINT", "http://seaweedfs:8333"),
+        access_key=_env("S3A_ACCESS_KEY", "admin"),
+        secret_key=_env("S3A_SECRET_KEY", "admin"),
     )
 
 
@@ -218,7 +215,8 @@ def main() -> None:
     landing_base = landing_base_uri()
     trusted_base = trusted_base_uri()
 
-    spark = build_spark_session()
+    spark_client = build_spark_session()
+    spark = spark_client.connect()
     try:
         cleaner = Cleaner(spark)
         options = CleanOptions()
@@ -247,7 +245,7 @@ def main() -> None:
 
         print("Limpieza y escritura en trusted-zone completadas.")
     finally:
-        spark.stop()
+        spark_client.close()
 
 
 if __name__ == "__main__":

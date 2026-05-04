@@ -2,10 +2,21 @@ from dataclasses import dataclass
 import io
 import json
 import os
-from .client import Client
+from .clients3 import Client
 import boto3
 import pandas as pd
 from io import BytesIO, StringIO
+
+
+def persistent_delta_uri_for_landing_key(trusted_bucket: str, landing_key: str) -> str:
+    """
+    Una taula Delta per objecte a landing: mateixa jerarquia sota el bucket persistent,
+    sense extensió de fitxer (Delta és un directori).
+    Ex.: landing `aemet/08019/2026/01/01/12_foo.json`
+         → `s3://{trusted_bucket}/aemet/08019/2026/01/01/12_foo/`
+    """
+    base, _ = os.path.splitext((landing_key or "").strip("/"))
+    return f"s3://{trusted_bucket}/{base}/"
 
 
 @dataclass
@@ -60,11 +71,11 @@ class Seaweedfs(Client):
             Body=buffer.getvalue(),
         )
 
-    def list_all_objects(self, Bucket:str = None, Prefix: str = None):
+    def list_object_keys(self, Bucket: str = None, Prefix: str = None, suffix: str = None):
         if Bucket is None or Prefix is None:
             print("Missing Bucket or Prefix for SeaWeedFS client")
-            return
-        
+            return []
+
         if self.s3_client is None:
             self.connect()
 
@@ -73,7 +84,41 @@ class Seaweedfs(Client):
         object_keys = []
         for page in pages:
             for obj in page.get("Contents", []):
-                object_keys.append(obj["Key"])
+                key = obj["Key"]
+                if suffix and not key.endswith(suffix):
+                    continue
+                object_keys.append(key)
+        return object_keys
+
+    def read_csv_object(self, Bucket: str, Key: str):
+        if self.s3_client is None:
+            self.connect()
+        file_obj = self.s3_client.get_object(Bucket=Bucket, Key=Key)
+        file_content = file_obj["Body"].read().decode("utf-8")
+        return pd.read_csv(StringIO(file_content))
+
+    def read_json_records(self, Bucket: str, Key: str) -> list:
+        """Retorna una llista de dicts (una fila per registre) des d'un JSON object o array."""
+        if self.s3_client is None:
+            self.connect()
+        file_obj = self.s3_client.get_object(Bucket=Bucket, Key=Key)
+        content = file_obj["Body"].read().decode("utf-8")
+        data = json.loads(content)
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return [data]
+        raise ValueError(f"JSON arrel no suportat a {Key!r}: {type(data)!r}")
+
+    def list_all_objects(self, Bucket:str = None, Prefix: str = None):
+        if Bucket is None or Prefix is None:
+            print("Missing Bucket or Prefix for SeaWeedFS client")
+            return
+        
+        if self.s3_client is None:
+            self.connect()
+
+        object_keys = self.list_object_keys(Bucket=Bucket, Prefix=Prefix)
 
         if not object_keys:
             print("No new files found in the Landing Zone.")
@@ -90,10 +135,8 @@ class Seaweedfs(Client):
                 except json.JSONDecodeError:
                     print(f"Error decoding JSON from {key}")
             elif key.endswith('.csv'):
-                file_obj = self.s3_client.get_object(Bucket=Bucket, Key=key)
-                file_content = file_obj['Body'].read().decode('utf-8')
                 try:
-                    df = pd.read_csv(StringIO(file_content))
+                    df = self.read_csv_object(Bucket=Bucket, Key=key)
                     all_data.extend(df.to_dict('records'))
                 except Exception as e:
                     print(f"Error reading CSV from {key}: {e}")

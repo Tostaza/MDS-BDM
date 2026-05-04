@@ -1,0 +1,40 @@
+from dataclasses import dataclass, field
+import os
+from typing import Optional
+
+from pyspark.sql import SparkSession
+
+from .client_motor_processamiento import ClientMotorProcessamiento
+
+
+@dataclass
+class SparkClient(ClientMotorProcessamiento):
+    app_name: str = "BDM"
+    master: str = os.getenv("SPARK_MASTER", "local[*]")
+    endpoint: str = os.getenv("S3A_ENDPOINT", "http://seaweedfs:8333")
+    access_key: str = os.getenv("S3A_ACCESS_KEY", "admin")
+    secret_key: str = os.getenv("S3A_SECRET_KEY", "admin")
+    spark: Optional[SparkSession] = field(default=None)
+
+    def connect(self) -> SparkSession:
+        self.spark = (
+            SparkSession.builder.appName(self.app_name)
+            .master(self.master)
+            .config("spark.hadoop.fs.s3a.endpoint", self.endpoint)
+            .config("spark.hadoop.fs.s3a.access.key", self.access_key)
+            .config("spark.hadoop.fs.s3a.secret.key", self.secret_key)
+            .config("spark.hadoop.fs.s3a.path.style.access", "true")
+            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+            .config(
+                "spark.hadoop.fs.s3a.aws.credentials.provider",
+                "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
+            )
+            .getOrCreate()
+        )
+        return self.spark
+
+    def close(self) -> None:
+        if self.spark is not None:
+            self.spark.stop()
+            self.spark = None

@@ -24,11 +24,7 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
 
     @task(task_id='process_bcn_relacio_trams_delta_table_task')
     def process_temporal_to_persistent():
-        import pandas as pd
-        import boto3
-        import json
-        from deltalake import DeltaTable, write_deltalake
-        from Clients.seaweedfs import Seaweedfs
+        from Clients.seaweedfs import Seaweedfs, persistent_delta_uri_for_landing_key
         from DELTA_LAKE.delta_lake import DeltaLake
         AWS_ACCESS_KEY_ID = Variable.get("AWS_ACCESS_KEY_ID", default_var=os.getenv("AWS_ACCESS_KEY_ID"))
         AWS_SECRET_ACCESS_KEY = Variable.get("AWS_SECRET_ACCESS_KEY", default_var=os.getenv("AWS_SECRET_ACCESS_KEY"))
@@ -37,9 +33,6 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
         LANDING_BUCKET = "landing-zone"
         LANDING_PREFIX = "ajuntament_bcn/relacio_trams/"
         TRUSTED_BUCKET = "persistent-landing-zone"
-        TRUSTED_PREFIX = LANDING_PREFIX
-        temporal_path = f"s3://{LANDING_BUCKET}/{LANDING_PREFIX}"
-        persistent_path = f"s3://{TRUSTED_BUCKET}/{TRUSTED_PREFIX}"
         storage_options = {
             "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
             "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
@@ -52,15 +45,21 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
         s3_client = Seaweedfs()
         s3_client.connect()
         delta_lake = DeltaLake()
-        response = s3_client.list_all_objects(LANDING_BUCKET, LANDING_PREFIX)
-        
-        if not response:
+        csv_keys = s3_client.list_object_keys(
+            Bucket=LANDING_BUCKET,
+            Prefix=LANDING_PREFIX,
+            suffix=".csv",
+        )
+        if not csv_keys:
             print("No s'han trobat dades noves per processar.")
             return
 
-        df_new = pd.DataFrame(response)
         s3_client.create_bucket(TRUSTED_BUCKET)
-        delta_lake.connect_and_load(df_new, persistent_path, storage_options, predicate)
+        for key in csv_keys:
+            df_new = s3_client.read_csv_object(Bucket=LANDING_BUCKET, Key=key)
+            persistent_path = persistent_delta_uri_for_landing_key(TRUSTED_BUCKET, key)
+            delta_lake.connect_and_load(df_new, persistent_path, storage_options, predicate)
+            print(f"Relació trams: una taula Delta per CSV: {key} → {persistent_path}")
 
     process_temporal_to_persistent()
 
