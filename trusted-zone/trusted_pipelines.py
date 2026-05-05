@@ -29,8 +29,9 @@ from typing import Sequence
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
-from pyspark.sql.types import ArrayType, StringType, StructType
 from pyspark.sql.utils import AnalysisException
+import xml.etree.ElementTree as ET
+from pyspark.sql.types import ArrayType, MapType, StructType, StructField, StringType
 
 from cleaner import CleanOptions, Cleaner
 
@@ -198,27 +199,82 @@ def process_transit_posts_union(
     return True
 
 
+def parse_sct_xml_to_rows(xml_text: str) -> list[dict]:
+    """
+    Parsea el XML crudo SCT (WFS/GML) y devuelve un dict por cada
+    gml:featureMember con los campos planos de cite:mct2_v_afectacions_data.
+    """
+    if not xml_text:
+        return []
+
+    NS = {
+        "gml":  "http://www.opengis.net/gml",
+        "cite": "http://www.opengeospatial.net/cite",
+    }
+
+    FIELDS = [
+        "identificador", "tipus", "subtipus", "carretera",
+        "pk_inici", "pk_fi", "causa", "cap_a", "data",
+        "nivell", "sentit", "descripcio", "descripcio_tipus",
+    ]
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return []
+
+    rows = []
+    for member in root.findall("gml:featureMember", NS):
+        feature = member.find("cite:mct2_v_afectacions_data", NS)
+        if feature is None:
+            continue
+        row = {}
+        for field in FIELDS:
+            el = feature.find(f"cite:{field}", NS)
+            row[field] = el.text.strip() if el is not None and el.text else None
+        rows.append(row)
+
+    return rows
+
+
 def enrich_sct_xml_content_df(df: DataFrame) -> DataFrame:
     """
-    Añade columnas derivadas sobre la tabla SCT ya cargada (columna ``xml_content`` en texto).
-
-    Incluye trim, longitud, extracción heurística de ``<title>`` y filtro opcional por la
-    palabra «barcelona» en el XML (variable ``SCT_FILTER_BARCELONA_ONLY``).
+    Parsea xml_content (WFS/GML de SCT) y explota cada featureMember
+    en una fila propia con columnas planas.
+    Mantiene file_name y cualquier otra columna que venga del Parquet original.
     """
+    if "xml_content" not in df.columns:
+        return df
+
+    # Filtrar per la ciutat de bcn, ens centrem aquí, llavors aqui es on fem el fltre i reduim dimensio del size de elements amb els que treballemm.
     out = df
-    if "xml_content" not in out.columns:
-        return out
-
-    out = out.withColumn("xml_content", F.trim(F.col("xml_content")))
-    out = out.withColumn("xml_len", F.length(F.col("xml_content")))
-
     if _truthy("SCT_FILTER_BARCELONA_ONLY", "false"):
         out = out.filter(F.lower(F.col("xml_content")).contains("barcelona"))
 
-    out = out.withColumn(
-        "title_guess",
-        F.regexp_extract(F.col("xml_content"), "(?i)<title>([^<]{1,500})</title>", 1),
+    # UDF: string XML → array de dicts (uno por featureMember)
+    parse_udf = F.udf(
+        parse_sct_xml_to_rows,
+        ArrayType(MapType(StringType(), StringType()))
     )
+
+    # Aplica el UDF → columna "features" con array de dicts
+    out = out.withColumn("features", parse_udf(F.col("xml_content")))
+
+    # Explode: cada dict del array → fila propia
+    out = out.withColumn("feature", F.explode("features"))
+
+    # Extrae cada campo del map como columna plana
+    FIELDS = [
+        "identificador", "tipus", "subtipus", "carretera",
+        "pk_inici", "pk_fi", "causa", "cap_a", "data",
+        "nivell", "sentit", "descripcio", "descripcio_tipus",
+    ]
+    for field in FIELDS:
+        out = out.withColumn(field, F.col("feature")[field])
+
+    # Limpia columnas intermedias
+    out = out.drop("features", "feature", "xml_content")
+
     return out
 
 
@@ -232,9 +288,10 @@ def process_sct_traffic_incidents_parquet(
     ``Cleaner.clean`` con deduplicado por ``file_name`` y escribe en ``output_root_uri``.
     """
     df = cleaner.read_parquet(input_root_uri.rstrip("/") + "/")
-    df = enrich_sct_xml_content_df(df)
+    df = enrich_sct_xml_content_df(df)   # ← ahora parsea y explota el XML
 
-    dup_subset: tuple[str, ...] | None = ("file_name",) if "file_name" in df.columns else None
+    # Deduplicación por identificador, basicament es eliminar auqells que tinguin identificador igual.
+    dup_subset = ("identificador",) if "identificador" in df.columns else None
     opts = CleanOptions(
         trim_strings=True,
         empty_string_as_null=True,
