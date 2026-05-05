@@ -213,6 +213,8 @@ services:
       - ACCIDENTS_GU_ML_PREFIX=ajuntament_bcn/accidents_gu/
       - AEMET_ML_PREFIX=aemet/
       - HF_RAIN_ML_PREFIX=huggingface/kanishka089/
+      # Parquet de tweets RSS/Nitter en exploitation (misma jerarquía que en trusted)
+      - TRANSIT_POSTS_PREFIX=transit_posts/
       - KAGGLE_ML_PREFIX=
     volumes:
       - ./presentation-layer:/app
