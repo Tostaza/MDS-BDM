@@ -169,6 +169,7 @@ services:
       - ./notebooks:/opt/spark/work-dir/notebooks
       - ./trusted-zone:/opt/spark/work-dir/trusted-zone
       - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
+      - ./spark_client:/opt/spark/work-dir/spark_client
     networks:
       - bdm-network
     depends_on:
@@ -212,6 +213,8 @@ services:
       - ACCIDENTS_GU_ML_PREFIX=ajuntament_bcn/accidents_gu/
       - AEMET_ML_PREFIX=aemet/
       - HF_RAIN_ML_PREFIX=huggingface/kanishka089/
+      # Parquet de tweets RSS/Nitter en exploitation (misma jerarquía que en trusted)
+      - TRANSIT_POSTS_PREFIX=transit_posts/
       - KAGGLE_ML_PREFIX=
     volumes:
       - ./presentation-layer:/app
@@ -534,6 +537,7 @@ services:
         - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
         - ./trusted-zone:/opt/spark/work-dir/trusted-zone
         - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
+        - ./spark_client:/opt/spark/work-dir/spark_client
         - ./presentation-layer:/opt/spark/work-dir/presentation-layer
       networks:
         - bdm-network

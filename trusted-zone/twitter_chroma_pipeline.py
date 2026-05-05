@@ -65,7 +65,7 @@ def _trusted_twitter_path() -> str:
 def _message_text(row: pd.Series) -> str:
     """Compone un texto único por fila a partir de campos típicos RSS/Twitter JSON."""
     chunks: list[str] = []
-    for col in ("summary", "title", "content", "description", "text", "body"):
+    for col in ("summary_text_plain", "summary", "title", "content", "description", "text", "body"):
         if col in row.index and pd.notna(row[col]):
             s = str(row[col]).strip()
             if s:
