@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
-Només el pas d'imatges: persistent-landing → trusted-zone (sense Spark).
+Script de **solo imágenes**: ``persistent-landing-zone`` → ``trusted-zone`` (sin Spark).
 
-Útil per comprovar boto3 + Pillow sense passar per spark-submit.
+Para qué sirve:
+    Ejecutar únicamente la lógica de ``traffic_cameras_media.process_traffic_cameras_persistent_to_trusted``
+    sin levantar Spark ni procesar Parquet. Ideal para depurar boto3, credenciales, Pillow
+    y rutas S3 antes de lanzar ``trusted_zone.py`` completo.
 
-    docker exec -it jupyter python /opt/spark/work-dir/trusted-zone/run_cameras_images.py
+Ejemplo (Docker):
 
-Variables: les mateixes que ``traffic_cameras_media.py`` (S3A_* o S3_ENDPOINT + AWS_*).
+    docker exec -it jupyter bash -lc \\
+      "export S3_ENDPOINT=http://seaweedfs:8333 && export AWS_ACCESS_KEY_ID=admin && \\
+       export AWS_SECRET_ACCESS_KEY=admin && \\
+       python /opt/spark/work-dir/trusted-zone/run_cameras_images.py"
+
+Variables: las mismas que ``traffic_cameras_media.py`` (``S3A_*`` o ``S3_ENDPOINT`` + ``AWS_*``).
 """
 
 from __future__ import annotations
@@ -29,6 +37,11 @@ def _env(name: str, default: str) -> str:
 
 
 def ensure_bucket(bucket: str) -> None:
+    """
+    Crea el bucket de destino (trusted) en SeaweedFS si no existe, vía ``head_bucket`` / ``create_bucket``.
+
+    Misma configuración boto que el resto del proyecto (endpoint y claves por entorno).
+    """
     import boto3
     from botocore.exceptions import ClientError
 

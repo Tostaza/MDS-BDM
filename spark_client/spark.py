@@ -1,3 +1,9 @@
+"""
+Cliente Spark reutilizable: sesión con S3A (SeaweedFS) y cierre ordenado.
+
+Usado por ``trusted_zone``, ``exploitation_zone`` y otros jobs que comparten la misma
+configuración de endpoint y credenciales vía variables de entorno.
+"""
 from dataclasses import dataclass, field
 import os
 from typing import Optional
@@ -17,6 +23,12 @@ class SparkClient(ClientMotorProcessamiento):
     spark: Optional[SparkSession] = field(default=None)
 
     def connect(self) -> SparkSession:
+        """
+        Crea o reutiliza una ``SparkSession`` con S3A (SeaweedFS) y política de fechas **LEGACY**.
+
+        ``LEGACY`` es necesario para que ``to_timestamp`` con patrones tipo RSS
+        (``EEE, dd MMM yyyy HH:mm:ss z``) en el pipeline de ``transit_posts`` no falle en Spark 3+.
+        """
         self.spark = (
             SparkSession.builder.appName(self.app_name)
             .master(self.master)

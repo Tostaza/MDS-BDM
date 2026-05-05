@@ -1,4 +1,11 @@
-"""Lectura Parquet desde S3 (exploitation-zone) vía fsspec/pyarrow."""
+"""
+Acceso a datos del **dashboard** (exploitation-zone) en S3/SeaweedFS.
+
+Incluye:
+    - ``load_parquet_prefix`` / ``s3_storage_options``: lectura Parquet con fsspec/pyarrow.
+    - Funciones **boto3** para la galería de cámaras: listar sitios y objetos bajo
+      ``traffic_cameras/gallery/`` y descargar bytes para ``st.image`` en Streamlit.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +15,13 @@ import pandas as pd
 
 
 def _env(name: str, default: str) -> str:
+    """Devuelve ``os.environ[name]`` si está definido y no vacío; si no, ``default``."""
     v = os.environ.get(name)
     return v if v is not None and v != "" else default
 
 
 def s3_storage_options() -> dict:
+    """Opciones de autenticación y endpoint para ``pandas.read_parquet`` sobre ``s3://``."""
     return {
         "key": _env("AWS_ACCESS_KEY_ID", "admin"),
         "secret": _env("AWS_SECRET_ACCESS_KEY", "admin"),
@@ -21,12 +30,17 @@ def s3_storage_options() -> dict:
 
 
 def traffic_cameras_gallery_prefix(data_prefix: str) -> str:
-    """Prefix S3 sota exploitation on es grava la galeria (``traffic_cameras_gallery``)."""
+    """
+    Prefijo S3 dentro del bucket exploitation donde ``exploitation_zone`` escribió la galería.
+
+    Estructura: ``{DATA_PREFIX}/traffic_cameras/gallery/`` (o sin prefijo si ``DATA_PREFIX`` vacío).
+    """
     p = (data_prefix or "").strip("/")
     return f"{p}/traffic_cameras/gallery/" if p else "traffic_cameras/gallery/"
 
 
 def _s3_client():
+    """Cliente boto3 S3 para el dashboard (mismas variables ``S3_ENDPOINT`` / ``AWS_*`` que el compose)."""
     import boto3
 
     return boto3.client(
@@ -38,7 +52,11 @@ def _s3_client():
 
 
 def list_traffic_camera_gallery_sites(bucket: str, data_prefix: str = "") -> list[str]:
-    """Retorna els ``site_key`` (carpetes) dins ``traffic_cameras/gallery/``."""
+    """
+    Lista «carpetas» de primer nivel bajo la galería usando ``Delimiter='/'`` en ListObjectsV2.
+
+    Cada nombre devuelto es un ``site_key`` (ubicación lógica) para el selectbox de Streamlit.
+    """
     s3 = _s3_client()
     prefix = traffic_cameras_gallery_prefix(data_prefix)
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
@@ -55,9 +73,10 @@ def list_traffic_camera_gallery_sites(bucket: str, data_prefix: str = "") -> lis
 
 def list_traffic_camera_gallery_objects(bucket: str, data_prefix: str, site_key: str) -> list[tuple[str, str]]:
     """
-    Objectes d'una carpeta de galeria.
+    Lista objetos S3 de una carpeta de galería para un ``site_key`` concreto.
 
-    Retorna llista de ``(key_s3, nom_mostrat)`` ordenada per nom de fitxer.
+    Recorre ``ListObjectsV2`` con paginación y devuelve ``(key_s3, nombre_mostrar)``
+    ordenado por nombre de fichero (para columnas de miniaturas en Streamlit).
     """
     s3 = _s3_client()
     base = traffic_cameras_gallery_prefix(data_prefix) + site_key.strip("/") + "/"
@@ -82,6 +101,7 @@ def list_traffic_camera_gallery_objects(bucket: str, data_prefix: str, site_key:
 
 
 def get_s3_object_bytes(bucket: str, key: str) -> bytes:
+    """Descarga el objeto S3 completo en memoria (bytes) para mostrar imagen/GIF en la UI."""
     s3 = _s3_client()
     return s3.get_object(Bucket=bucket, Key=key)["Body"].read()
 

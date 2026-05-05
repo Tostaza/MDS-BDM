@@ -67,7 +67,12 @@ def _env(name: str, default: str) -> str:
     return value if value is not None and value != "" else default
 
 def ensure_bucket_exists(bucket: str) -> None:
-    """Crea el bucket a SeaweedFS si no existeix."""
+    """
+    Crea el bucket en SeaweedFS (API S3) si no existe: ``head_bucket`` y si falla ``create_bucket``.
+
+    Usa ``S3A_ENDPOINT`` o ``S3_ENDPOINT``, y ``S3A_ACCESS_KEY`` / ``S3A_SECRET_KEY`` o bien
+    ``AWS_ACCESS_KEY_ID`` / ``AWS_SECRET_ACCESS_KEY`` (para alinear con ``docker exec`` y Airflow).
+    """
     import boto3
     from botocore.exceptions import ClientError
 
@@ -209,6 +214,17 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
 
 
 def main() -> None:
+    """
+    Orquestación **persistent-landing → trusted-zone**.
+
+    Orden de ejecución:
+        1. **Fase 0 (boto3, sin Spark):** imágenes ``traffic_cameras`` de persistent a trusted
+           (ver ``traffic_cameras_media``). Así no depende de que Spark/Parquet fallen después.
+        2. **Spark:** descubrimiento de carpetas Parquet, pipelines Twitter/SCT/accidents GU y
+           el resto con ``Cleaner.clean_parquet``.
+
+    Variables principales: ver docstring del módulo al inicio de este archivo.
+    """
     landing_base = landing_base_uri()
     trusted_base = trusted_base_uri()
 

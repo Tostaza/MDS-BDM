@@ -1,12 +1,25 @@
 """
-Pipelines de trusted per tipus de dades (semi-estructurat / estructurat).
+**Pipelines especiales de la capa trusted** (además del Parquet genérico con ``Cleaner``).
 
-- **transit_posts/** (Nitter / RSS JSON → Delta a persistent-landing): llegeix totes les
-  arrels Parquet sota aquest prefix, les fusiona en un sol dataset, aplica camps plans
-  útils per retrieval (text sense HTML, URLs de vídeo, timestamps) i escriu un únic
-  Parquet a `trusted-zone/.../transit_posts/`.
-- **sct/traffic_incidents/**: la bronze ja grava `file_name` + `xml_content`; aquí es
-  refinen strings, longitud, dedup per fitxer i filtres opcionals (p. ex. mencions a Barcelona).
+Este módulo clasifica carpetas Parquet bajo ``persistent-landing-zone`` y aplica lógica distinta:
+
+1. **Twitter / Nitter (``transit_posts/``)**  
+   Muchas carpetas Delta/Parquet (un post cada una) se leen con ``mergeSchema``, se aplana
+   el JSON tipo RSS (``title_detail``, ``summary``, HTML → texto plano, URL de vídeo,
+   ``published_ts``, etc.), se deduplica por ``link`` o ``id`` y se escribe **un único**
+   dataset Parquet en ``trusted-zone/.../transit_posts/`` (para Chroma / dashboard).
+
+2. **Incidents SCT (``sct/traffic_incidents/``)**  
+   La bronze ya guardó ``file_name`` + ``xml_content``. Aquí se enriquece (trim, longitud,
+   ``title_guess`` por regex, filtro opcional ``SCT_FILTER_BARCELONA_ONLY``), deduplicado por
+   ``file_name`` y escritura Parquet en trusted.
+
+3. **Accidents GU**  
+   ``clean_options_for_accidents_gu`` devuelve ``CleanOptions`` con deduplicado por
+   ``Numero_expedient`` cuando existe la columna.
+
+``partition_roots_by_pipeline`` reparte las URIs devueltas por ``discover_parquet_roots`` en
+tres grupos: transit, SCT y resto (Parquet estándar en ``trusted_zone.main``).
 """
 
 from __future__ import annotations
@@ -23,6 +36,7 @@ from cleaner import CleanOptions, Cleaner
 
 
 def _col_dtype(df: DataFrame, colname: str):
+    """Devuelve el ``DataType`` de la columna ``colname`` en el schema del DataFrame, o ``None``."""
     for f in df.schema.fields:
         if f.name == colname:
             return f.dataType
@@ -185,7 +199,12 @@ def process_transit_posts_union(
 
 
 def enrich_sct_xml_content_df(df: DataFrame) -> DataFrame:
-    """Transformacions sobre la taula ja llegida (columna ``xml_content``)."""
+    """
+    Añade columnas derivadas sobre la tabla SCT ya cargada (columna ``xml_content`` en texto).
+
+    Incluye trim, longitud, extracción heurística de ``<title>`` y filtro opcional por la
+    palabra «barcelona» en el XML (variable ``SCT_FILTER_BARCELONA_ONLY``).
+    """
     out = df
     if "xml_content" not in out.columns:
         return out
@@ -208,7 +227,10 @@ def process_sct_traffic_incidents_parquet(
     input_root_uri: str,
     output_root_uri: str,
 ) -> None:
-    """Llegeix el Delta/Parquet de incidents SCT, enriqueix XML i escriu a trusted."""
+    """
+    Lee Parquet/Delta de incidents SCT desde ``input_root_uri``, aplica ``enrich_sct_xml_content_df``,
+    ``Cleaner.clean`` con deduplicado por ``file_name`` y escribe en ``output_root_uri``.
+    """
     df = cleaner.read_parquet(input_root_uri.rstrip("/") + "/")
     df = enrich_sct_xml_content_df(df)
 
@@ -225,7 +247,11 @@ def process_sct_traffic_incidents_parquet(
 
 
 def clean_options_for_accidents_gu(df: DataFrame) -> CleanOptions:
-    """Opcions de dedup per accidents GU (CSV→Delta) si existeix la clau natural."""
+    """
+    Construye ``CleanOptions`` para el prefijo ``ajuntament_bcn/accidents_gu`` en trusted.
+
+    Si existe ``Numero_expedient``, deduplica por esa columna (clave natural del expediente).
+    """
     if "Numero_expedient" in df.columns:
         return CleanOptions(
             trim_strings=True,

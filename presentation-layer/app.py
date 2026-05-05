@@ -158,6 +158,12 @@ def tab_kanishka(bucket: str, prefix: str) -> None:
 
 
 def tab_traffic_cameras(bucket: str, data_prefix: str) -> None:
+    """
+    Pestaña Streamlit **«Cámaras tráfico»**: selector por ``site_key`` y visualización de capturas.
+
+    Lee del bucket ``bucket`` (típicamente ``EXPLOITATION_BUCKET``) los prefijos generados por
+    ``traffic_cameras_gallery.materialize_traffic_cameras_gallery`` tras ejecutar el job de exploitation.
+    """
     st.markdown(
         "Galería **traffic_cameras** en exploitation (`traffic_cameras/gallery/{ubicación}/…`). "
         "Origen: imágenes en persistent → **trusted** (Pillow: brillo / nitidez) → **exploitation** "

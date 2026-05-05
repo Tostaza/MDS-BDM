@@ -1,21 +1,24 @@
 """
-Imatges de càmeres de trànsit (GIF/JPG/…): persistent-landing → trusted-zone **sense Parquet**.
+Módulo **traffic_cameras (capa trusted, sin Parquet)**.
 
-Es llegeixen bytes des de ``{DATA_PREFIX}/traffic_cameras/images/raw/`` (sense ``DATA_PREFIX``,
-el camí coincideix amb la bronze SCT; si no, cal el mateix prefix a les claus S3).
-S'apliquen millores lleus (lluminositat, nitidesa, contrast, redimensió opcional) amb Pillow
-i es graven a ``…/traffic_cameras/images/trusted/`` mantenint ``{timestamp}/{fitxer}``.
+Qué hace (flujo medalla, solo binarios):
+    1. Lista objetos en el bucket ``PERSISTENT_BUCKET`` (p. ej. ``persistent-landing-zone``)
+       bajo prefijos tipo ``…/traffic_cameras/images/raw/`` (respeta ``DATA_PREFIX``).
+    2. Filtra extensiones de imagen (.gif, .png, .jpg, …).
+    3. Descarga bytes con boto3, aplica **Pillow** (brillo, nitidez, contraste; GIF animado
+       frame a frame) y opcionalmente redimensiona si ``CAMERA_MAX_EDGE`` > 0.
+    4. Sube el resultado a ``TRUSTED_BUCKET`` bajo ``…/traffic_cameras/images/trusted/{timestamp}/{archivo}``.
 
-Variables d'entorn (opcionals):
-    CAMERA_MEDIA_ENABLED       "false" per ometre tot el bloc (default true)
-    CAMERA_MEDIA_RAW_PREFIX    prefix complet sota el bucket persistent (sense bucket);
-                               per defecte ``{DATA_PREFIX}/traffic_cameras/images/raw/``.
-                               S3 és **case-sensitive**: si les claus usen ``Traffic_Cameras``, passa
-                               aquest valor exacte o deixa que es provin variants automàticament.
-    CAMERA_BRIGHTNESS          factor Pillow ImageEnhance.Brightness (default 1.06)
-    CAMERA_SHARPNESS           factor ImageEnhance.Sharpness (default 1.15)
-    CAMERA_CONTRAST            factor ImageEnhance.Contrast (default 1.05; 1.0 = neutral)
-    CAMERA_MAX_EDGE            píxel màxim de la vora llarga; 0 = sense redimensionar (default 0)
+Se invoca desde ``trusted_zone.main()`` en **Fase 0** (antes de Spark) y desde
+``run_cameras_images.py`` para pruebas aisladas.
+
+Variables de entorno (opcionales):
+    CAMERA_MEDIA_ENABLED       ``false`` para desactivar (por defecto ``true``).
+    CAMERA_MEDIA_RAW_PREFIX    Ruta bajo el bucket persistente sin nombre de bucket; si no
+                               se define, se prueban variantes de mayúsculas en ``traffic_cameras``.
+    PERSISTENT_BUCKET, TRUSTED_BUCKET, DATA_PREFIX
+    S3A_* o S3_ENDPOINT + AWS_* (mismo criterio que ``ensure_bucket_exists`` en ``trusted_zone``).
+    CAMERA_BRIGHTNESS / CAMERA_SHARPNESS / CAMERA_CONTRAST / CAMERA_MAX_EDGE
 """
 
 from __future__ import annotations
@@ -23,21 +26,21 @@ from __future__ import annotations
 import io
 import os
 import re
-# -----------------------------------------------------------------------------
-# Només s'executa si Pillow està instal·lat (p. ex. imatge Spark Docker després de pip install Pillow).
-# -----------------------------------------------------------------------------
 
 
 def _env(name: str, default: str) -> str:
+    """Lee variable de entorno; si falta o está vacía, devuelve ``default``."""
     v = os.environ.get(name)
     return v if v is not None and v != "" else default
 
 
 def _truthy(name: str, default: str = "true") -> bool:
+    """Interpreta variable de entorno como booleano (1/true/yes/on)."""
     return _env(name, default).lower() in ("1", "true", "yes", "on")
 
 
 def _float_env(name: str, default: str) -> float:
+    """Variable de entorno como float; si no es válida, usa ``default``."""
     try:
         return float(_env(name, default))
     except ValueError:
@@ -45,6 +48,7 @@ def _float_env(name: str, default: str) -> float:
 
 
 def _int_env(name: str, default: str) -> int:
+    """Variable de entorno como entero; si no es válida, usa ``default``."""
     try:
         return int(_env(name, default))
     except ValueError:
@@ -70,17 +74,23 @@ def _s3_client():
 
 
 def _with_data_prefix(subpath: str, data_prefix: str) -> str:
-    """Prefix comú DATA_PREFIX (alineat amb landing/trusted URI)."""
+    """
+    Antepone ``DATA_PREFIX`` a un subpath y devuelve prefijo S3 terminado en ``/``.
+
+    Ej.: ``("traffic_cameras/images/raw", "proyecto")`` → ``proyecto/traffic_cameras/images/raw/``.
+    """
     p = (data_prefix or "").strip("/")
     s = subpath.strip("/")
     return f"{p}/{s}/" if p else f"{s}/"
 
 
 def _camera_raw_prefix(data_prefix: str) -> str:
+    """Prefijo S3 de **origen** (imágenes crudas en persistent-landing)."""
     return _with_data_prefix("traffic_cameras/images/raw", data_prefix)
 
 
 def _camera_trusted_prefix(data_prefix: str) -> str:
+    """Prefijo S3 de **destino** en trusted-zone (imágenes ya limpiadas)."""
     return _with_data_prefix("traffic_cameras/images/trusted", data_prefix)
 
 
@@ -124,6 +134,7 @@ _IMAGE_EXT = (
 
 
 def _is_image_key(key: str) -> bool:
+    """Devuelve True si la clave S3 termina en una extensión de imagen admitida."""
     k = key.lower()
     return any(k.endswith(ext) for ext in _IMAGE_EXT)
 
@@ -137,7 +148,11 @@ def _relative_after_images_raw(key: str) -> str | None:
 
 
 def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallback: str) -> str:
-    """Sempre escriu sota el prefix canònic ``traffic_cameras/images/trusted/``."""
+    """
+    Construye la clave de salida en trusted (siempre bajo ``…/images/trusted/``).
+
+    Corrige extensión ``.pmng`` errónea a ``.png`` en la clave de destino.
+    """
     rel = _relative_after_images_raw(source_key)
     if rel is None:
         rel = rel_fallback
@@ -148,6 +163,11 @@ def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallbac
 
 
 def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max_edge: int):
+    """
+    Aplica mejoras Pillow a un frame PIL (RGB): brillo, nitidez, contraste y resize opcional.
+
+    Parámetros ``brightness`` / ``sharpness`` / ``contrast`` son factores (>1 intensifica).
+    """
     from PIL import Image, ImageEnhance
 
     if im.mode not in ("RGB", "RGBA"):
@@ -170,6 +190,11 @@ def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max
 
 
 def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, contrast: float, max_edge: int) -> bytes:
+    """
+    Decodifica bytes de imagen, mejora y vuelve a codificar a bytes (GIF/JPEG/PNG/WebP según formato).
+
+    GIF con varios frames: procesa cada frame y reensambla el GIF.
+    """
     from PIL import Image, ImageSequence
 
     src = io.BytesIO(raw)
@@ -209,10 +234,15 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
 
 def process_traffic_cameras_persistent_to_trusted() -> int:
     """
-    Llista objectes sota ``traffic_cameras/images/raw/`` al bucket persistent,
-    millora cada imatge i puja el resultat a ``traffic_cameras/images/trusted/`` al bucket trusted.
+    Punto de entrada principal: **persistent-landing → trusted-zone** solo para imágenes.
 
-    Retorna el nombre de fitxers processats (0 si desactivat o sense Pillow / sense claus).
+    Pasos:
+        1. Comprueba ``CAMERA_MEDIA_ENABLED`` e import de Pillow.
+        2. Lista claves bajo los prefijos calculados (incluye prueba de listado al bucket).
+        3. Por cada imagen: ``get_object`` → mejora → ``put_object`` en trusted.
+
+    Returns:
+        Número de archivos escritos correctamente en trusted, o ``0`` si no hay datos o está desactivado.
     """
     if not _truthy("CAMERA_MEDIA_ENABLED", "true"):
         print("traffic_cameras (imatges): CAMERA_MEDIA_ENABLED=false, s'omet.")
