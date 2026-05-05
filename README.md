@@ -87,54 +87,54 @@ The above table classifies the datasources according to the type of data flow:
 
 ---
 
-## Zona trusted (Spark): de `persistent-landing-zone` a `trusted-zone`
+## Spark en Docker: trusted-zone y exploitation-zone
 
-Este paso ejecuta `trusted-zone/trusted_zone.py`: lee Parquet bajo el bucket de **persistent-landing**, aplica el *cleaner* y escribe en **trusted-zone** (misma jerarquía de carpetas). Requiere **PySpark**, acceso **S3A** a SeaweedFS y el paquete **`spark_client/`** en la **raíz del repositorio** (única fuente; se importa con `from spark_client import SparkClient`).
+Ambos jobs se ejecutan con **`spark-submit`** dentro del contenedor **`jupyter`**, usando el master del cluster (`spark://spark-master:7077`). El código importa `SparkClient` desde el paquete **`spark_client/`** (`connect()` para abrir sesión, `close()` o `stop()` para cerrarla).
 
-### Prerrequisitos
+### Prerrequisitos comunes
 
-- Contenedor con Spark (en los ejemplos se usa el servicio `jupyter`).
-- El código del repo montado en el contenedor (rutas típicas bajo `/opt/spark/work-dir/`).
-- Variables de entorno alineadas con `trusted_zone.py` (`S3A_ENDPOINT`, `S3A_ACCESS_KEY`, `S3A_SECRET_KEY`, `SPARK_MASTER`, buckets, etc.), según tu `.env` o `docker compose`.
+1. **Stack levantado**: `docker compose up -d` (al menos `jupyter`, `spark-master`, `spark-worker`, `seaweedfs`).
+2. **Volúmenes en `jupyter` y `spark-worker`**: en `docker-compose.yaml` deben montarse bajo `/opt/spark/work-dir/` al menos `trusted-zone/`, `exploitation-zone/` y **`spark_client/`** (sin esto verás `ModuleNotFoundError: No module named 'spark_client'`). Tras cambiar volúmenes: `docker compose up -d --force-recreate jupyter`.
+3. **`PYTHONPATH`**: incluir la raíz efectiva del repo en el contenedor (`/opt/spark/work-dir` en el layout por defecto) y, si hace falta imports desde Airflow, `/opt/spark/work-dir/dags` (solo si montas `dags/` en ese path).
+4. **Variables** (opcionales; tienen defaults en los scripts): `S3A_ENDPOINT`, `S3A_ACCESS_KEY`, `S3A_SECRET_KEY`, `SPARK_MASTER`, `PERSISTENT_BUCKET`, `TRUSTED_BUCKET`, `EXPLOITATION_BUCKET`, `DATA_PREFIX`, etc. Puedes prefijarlas en el mismo `bash -lc "..."` con `export VAR=valor && ...`.
 
-### Opción recomendada: script Bash (dentro del contenedor)
-
-Los scripts `trusted-zone/spark-submit-trusted.sh` y `exploitation-zone/spark-submit-exploitation.sh` definen `PYTHONPATH` (raíz del repo + `dags/`) y llaman a `spark-submit`. Deben tener **fines de línea LF** (en Windows, Git respeta `*.sh text eol=lf` del `.gitattributes`).
-
-Desde **PowerShell en Windows** (se ejecuta Bash *dentro* del contenedor):
+Comprobación rápida de rutas en el contenedor:
 
 ```powershell
-docker exec -it jupyter bash /opt/spark/work-dir/trusted-zone/spark-submit-trusted.sh
+docker exec -it jupyter ls /opt/spark/work-dir
+docker exec -it jupyter ls /opt/spark/work-dir/spark_client
 ```
 
-Si tu repo **no** está en `/opt/spark/work-dir`, indica la raíz con `BDM_REPO_ROOT` (directorio que contiene `spark_client/`, `trusted-zone/` y `dags/`):
+---
 
-```powershell
-docker exec -it jupyter env BDM_REPO_ROOT=/ruta/en/contenedor/al/repo bash /opt/spark/work-dir/trusted-zone/spark-submit-trusted.sh
-```
+### Trusted-zone: `persistent-landing-zone` → `trusted-zone`
 
-Otro master de Spark (ejemplo `local[*]`):
+**Qué hace:** ejecuta `trusted-zone/trusted_zone.py`: descubre datasets Parquet bajo el bucket de **landing**, aplica el *cleaner* y escribe en **trusted-zone** manteniendo la misma jerarquía de carpetas.
 
-```powershell
-docker exec -it jupyter env SPARK_MASTER="local[*]" bash /opt/spark/work-dir/trusted-zone/spark-submit-trusted.sh
-```
-
-### Opción alternativa: una sola línea con `spark-submit`
-
-Equivalente manual (ajusta rutas si tu montaje es distinto):
+**Comando (PowerShell en el host):**
 
 ```powershell
 docker exec -it jupyter bash -lc "export PYTHONPATH=/opt/spark/work-dir:/opt/spark/work-dir/dags && /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/work-dir/trusted-zone/trusted_zone.py"
 ```
 
-- **`PYTHONPATH`**: la **raíz del repositorio** (carpeta padre de `spark_client/`) y opcionalmente **`.../dags`** para `Clients.*`.
-- `trusted_zone.py` añade la raíz del repo al `sys.path` para poder hacer `from spark_client import SparkClient` sin duplicar código.
+- **`PYTHONPATH`**: primera entrada = raíz donde está el paquete `spark_client` (junto a `trusted-zone/`). La segunda es opcional si necesitas código bajo `dags/`.
+- Si usas otro master (por ejemplo local): cambia `--master spark://spark-master:7077` por `--master 'local[*]'` y ajusta `SPARK_MASTER` si tu `SparkClient` lo lee del entorno.
 
-### Trusted → Exploitation (mismo criterio)
+---
+
+### Exploitation-zone: `trusted-zone` → `exploitation-zone`
+
+**Qué hace:** ejecuta `exploitation-zone/exploitation_zone.py`: copia los Parquet detectados en **trusted** hacia **exploitation** con la misma estructura; puede aplicar transformaciones definidas en el catálogo del script. Depende de que los datos ya existan en trusted (habitualmente después de ejecutar el paso **trusted-zone**).
+
+**Comando (PowerShell en el host):**
 
 ```powershell
-docker exec -it jupyter bash /opt/spark/work-dir/exploitation-zone/spark-submit-exploitation.sh
+docker exec -it jupyter bash -lc "export PYTHONPATH=/opt/spark/work-dir:/opt/spark/work-dir/dags && /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/work-dir/exploitation-zone/exploitation_zone.py"
 ```
+
+- Mismo criterio de `PYTHONPATH` que arriba. El script ya añade `trusted-zone/` y la carpeta de exploitation al `sys.path` para imports locales (`trusted_zone`, `dataset_operations`, etc.).
+
+**Orden típico en pipeline:** primero **trusted-zone**, luego **exploitation-zone**.
 
 ### Ejecución local en Windows (sin Docker)
 
@@ -143,7 +143,10 @@ Solo si tienes PySpark y red hasta SeaweedFS configurada como en el script:
 ```powershell
 cd C:\ruta\al\repo\BDM
 $env:PYTHONPATH = "$PWD;$PWD\dags"
+# Trusted (landing → trusted):
 python trusted-zone\trusted_zone.py
+# Exploitation (trusted → exploitation), cuando ya haya datos en trusted:
+python exploitation-zone\exploitation_zone.py
 ```
 
 En PowerShell el separador de `PYTHONPATH` es **`;`**. Dentro de contenedores Linux sigue siendo **`:`**.
@@ -152,6 +155,7 @@ En PowerShell el separador de `PYTHONPATH` es **`;`**. Dentro de contenedores Li
 
 | Problema | Causa habitual |
 | :--- | :--- |
-| `ModuleNotFoundError: spark_client` | Falta la carpeta `spark_client/` en la raíz del repo montada, o `PYTHONPATH` no incluye esa raíz. |
-| `set: pipefail: invalid option` en `.sh` | Fichero `.sh` guardado con **CRLF**; conviértelo a LF o clona tras aplicar `.gitattributes`. |
-| Rutas incorrectas | Sustituye `/opt/spark/work-dir` por la ruta real donde ves `trusted-zone/` y `dags/` en el contenedor (`docker exec -it jupyter ls /opt/spark/work-dir`). |
+| `ModuleNotFoundError: spark_client` | En Docker falta montar `./spark_client` en `/opt/spark/work-dir/spark_client` (ver `docker-compose`) o no recreaste `jupyter` tras el cambio. También puede faltar incluir la raíz del repo en `PYTHONPATH`. |
+| Exploitation sin datos / rutas vacías | Trusted-zone aún no ha escrito en el bucket/prefijo esperado, o variables de bucket/prefijo no coinciden con lo que hay en SeaweedFS. |
+| Rutas incorrectas | Sustituye `/opt/spark/work-dir` por la ruta real donde ves `trusted-zone/`, `exploitation-zone/` y `spark_client/` (`docker exec -it jupyter ls /opt/spark/work-dir`). |
+| Imports desde `dags/` | Si quitas `.../dags` del `PYTHONPATH`, no podrás importar módulos solo presentes ahí; monta `./dags` en el contenedor si lo necesitas. |

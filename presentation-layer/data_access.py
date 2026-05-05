@@ -20,6 +20,72 @@ def s3_storage_options() -> dict:
     }
 
 
+def traffic_cameras_gallery_prefix(data_prefix: str) -> str:
+    """Prefix S3 sota exploitation on es grava la galeria (``traffic_cameras_gallery``)."""
+    p = (data_prefix or "").strip("/")
+    return f"{p}/traffic_cameras/gallery/" if p else "traffic_cameras/gallery/"
+
+
+def _s3_client():
+    import boto3
+
+    return boto3.client(
+        "s3",
+        endpoint_url=_env("S3_ENDPOINT", "http://seaweedfs:8333"),
+        aws_access_key_id=_env("AWS_ACCESS_KEY_ID", "admin"),
+        aws_secret_access_key=_env("AWS_SECRET_ACCESS_KEY", "admin"),
+    )
+
+
+def list_traffic_camera_gallery_sites(bucket: str, data_prefix: str = "") -> list[str]:
+    """Retorna els ``site_key`` (carpetes) dins ``traffic_cameras/gallery/``."""
+    s3 = _s3_client()
+    prefix = traffic_cameras_gallery_prefix(data_prefix)
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
+    sites: list[str] = []
+    for cp in resp.get("CommonPrefixes", []) or []:
+        p = (cp.get("Prefix") or "").rstrip("/")
+        if not p:
+            continue
+        name = p.split("/")[-1]
+        if name:
+            sites.append(name)
+    return sorted(set(sites))
+
+
+def list_traffic_camera_gallery_objects(bucket: str, data_prefix: str, site_key: str) -> list[tuple[str, str]]:
+    """
+    Objectes d'una carpeta de galeria.
+
+    Retorna llista de ``(key_s3, nom_mostrat)`` ordenada per nom de fitxer.
+    """
+    s3 = _s3_client()
+    base = traffic_cameras_gallery_prefix(data_prefix) + site_key.strip("/") + "/"
+    keys: list[tuple[str, str]] = []
+    token = None
+    while True:
+        kw: dict = {"Bucket": bucket, "Prefix": base}
+        if token:
+            kw["ContinuationToken"] = token
+        resp = s3.list_objects_v2(**kw)
+        for obj in resp.get("Contents", []) or []:
+            k = obj.get("Key") or ""
+            if k.endswith("/"):
+                continue
+            name = k.split("/")[-1]
+            keys.append((k, name))
+        if not resp.get("IsTruncated"):
+            break
+        token = resp.get("NextContinuationToken")
+    keys.sort(key=lambda x: x[1])
+    return keys
+
+
+def get_s3_object_bytes(bucket: str, key: str) -> bytes:
+    s3 = _s3_client()
+    return s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+
+
 def load_parquet_prefix(bucket: str, prefix: str) -> pd.DataFrame:
     """Lee todos los .parquet bajo s3://bucket/prefix/ (carpeta)."""
     so = s3_storage_options()

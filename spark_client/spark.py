@@ -30,6 +30,8 @@ class SparkClient(ClientMotorProcessamiento):
                 "spark.hadoop.fs.s3a.aws.credentials.provider",
                 "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider",
             )
+            # RSS/Nitter: to_timestamp("EEE, dd MMM yyyy HH:mm:ss z") requereix parser pre-Spark 3.
+            .config("spark.sql.legacy.timeParserPolicy", "LEGACY")
             .getOrCreate()
         )
         return self.spark
@@ -38,3 +40,7 @@ class SparkClient(ClientMotorProcessamiento):
         if self.spark is not None:
             self.spark.stop()
             self.spark = None
+
+    def stop(self) -> None:
+        """Detiene la sesión; equivalente a :meth:`close` (como ``SparkSession.stop()``)."""
+        self.close()

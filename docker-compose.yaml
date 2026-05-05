@@ -169,6 +169,7 @@ services:
       - ./notebooks:/opt/spark/work-dir/notebooks
       - ./trusted-zone:/opt/spark/work-dir/trusted-zone
       - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
+      - ./spark_client:/opt/spark/work-dir/spark_client
     networks:
       - bdm-network
     depends_on:
@@ -534,6 +535,7 @@ services:
         - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
         - ./trusted-zone:/opt/spark/work-dir/trusted-zone
         - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
+        - ./spark_client:/opt/spark/work-dir/spark_client
         - ./presentation-layer:/opt/spark/work-dir/presentation-layer
       networks:
         - bdm-network

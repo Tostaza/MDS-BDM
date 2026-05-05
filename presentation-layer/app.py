@@ -12,7 +12,13 @@ import os
 import chromadb
 import streamlit as st
 
-from data_access import load_parquet_prefix
+from data_access import (
+    get_s3_object_bytes,
+    list_traffic_camera_gallery_objects,
+    list_traffic_camera_gallery_sites,
+    load_parquet_prefix,
+    traffic_cameras_gallery_prefix,
+)
 from ml_models import (
     load_aemet_predictions_table,
     predict_accidents_gu,
@@ -151,6 +157,50 @@ def tab_kanishka(bucket: str, prefix: str) -> None:
         st.info(f"**Rain** predicho: **{val:.4f}**")
 
 
+def tab_traffic_cameras(bucket: str, data_prefix: str) -> None:
+    st.markdown(
+        "Galería **traffic_cameras** en exploitation (`traffic_cameras/gallery/{ubicación}/…`). "
+        "Origen: imágenes en persistent → **trusted** (Pillow: brillo / nitidez) → **exploitation** "
+        "(orden por sitio). Requiere haber ejecutado `trusted_zone.py` y `exploitation_zone.py`."
+    )
+    gprefix = traffic_cameras_gallery_prefix(data_prefix)
+    st.caption(f"Ruta listada: `s3://{bucket}/{gprefix}` · `DATA_PREFIX={data_prefix!r}`")
+
+    sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
+    if not sites:
+        st.info(
+            "No hay carpetas de galería. Comprueba que existan claves bajo el prefijo anterior, "
+            "que `EXPLOITATION_BUCKET` y `DATA_PREFIX` coincidan con el pipeline, y que SeaweedFS tenga datos."
+        )
+        return
+
+    site = st.selectbox("Ubicación / cámara (site_key)", sites, key="traffic_cam_site")
+    items = list_traffic_camera_gallery_objects(bucket, data_prefix, site)
+    if not items:
+        st.warning("Esta carpeta no tiene imágenes listadas.")
+        return
+
+    names = [n for _k, n in items]
+    choice = st.selectbox("Captura (fichero)", names, key="traffic_cam_file")
+    key = next(k for k, n in items if n == choice)
+
+    try:
+        body = get_s3_object_bytes(bucket, key)
+    except Exception as ex:
+        st.error(f"No se pudo leer `s3://{bucket}/{key}`: {ex}")
+        return
+
+    st.caption(f"Clave S3: `{key}`")
+    try:
+        st.image(body, caption=choice, use_container_width=True)
+    except Exception:
+        import io
+
+        from PIL import Image
+
+        st.image(Image.open(io.BytesIO(body)), caption=choice, use_container_width=True)
+
+
 def tab_kaggle(bucket: str, prefix: str) -> None:
     st.markdown(
         "Parquet de **Kaggle** (accidentes u otro CSV ingerido al mismo bucket). "
@@ -188,13 +238,15 @@ def main() -> None:
     pfx_aemet = _env("AEMET_ML_PREFIX", "aemet/")
     pfx_hf = _env("HF_RAIN_ML_PREFIX", "huggingface/kanishka089/")
     pfx_kaggle = _env("KAGGLE_ML_PREFIX", "")
+    data_prefix = _env("DATA_PREFIX", "")
 
-    tab_ml1, tab_ml2, tab_ml3, tab_ml4, tab_sim, tab_expl, tab_chr = st.tabs(
+    tab_ml1, tab_ml2, tab_ml3, tab_ml4, tab_cam, tab_sim, tab_expl, tab_chr = st.tabs(
         [
             "ML · Accidents GU",
             "ML · AEMET",
             "ML · Kanishka (HF)",
             "ML · Kaggle",
+            "Cámaras tráfico",
             "Similaridad Twitter",
             "Explorador Parquet",
             "ChromaDB",
@@ -209,6 +261,9 @@ def main() -> None:
         tab_kanishka(exploitation_bucket, pfx_hf)
     with tab_ml4:
         tab_kaggle(exploitation_bucket, pfx_kaggle)
+
+    with tab_cam:
+        tab_traffic_cameras(exploitation_bucket, data_prefix)
 
     with tab_sim:
         st.subheader("Pares de mensajes similares (≥ umbral en pipeline)")

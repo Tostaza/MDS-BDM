@@ -2,8 +2,13 @@
 Punto de entrada: Spark + S3A (SeaweedFS) + Cleaner.
 
 Descubre de forma recursiva carpetas que son “raíces” de un dataset Parquet bajo
-persistent-landing-zone, limpia cada una y escribe el mismo path relativo en
-trusted-zone (misma jerarquía de carpetas, datos limpios).
+persistent-landing-zone, limpia cada una y escribe en trusted-zone.
+
+Casos especials (veure ``trusted_pipelines.py``):
+- ``transit_posts/`` (Nitter / Delta per post): es fusionen totes les arrels en un sol
+  Parquet a ``trusted-zone/.../transit_posts/`` amb camps plans per retrieval.
+- ``sct/traffic_incidents/``: enriqueix ``xml_content`` i dedup per ``file_name``.
+- La resta: mateixa jerarquia relativa Parquet → Parquet amb ``Cleaner``.
 
 Ejecución típica (desde la raíz del repo):
 
@@ -22,12 +27,16 @@ Variables de entorno opcionales:
     PERSISTENT_BUCKET     bucket origen (por defecto persistent-landing-zone)
     TRUSTED_BUCKET        bucket destino (por defecto trusted-zone)
     DATA_PREFIX           prefijo común dentro de ambos buckets, ej. mi-proyecto/
+    TRUSTED_TRANSIT_REL_PREFIX       prefijo relatiu landing per Twitter (default transit_posts)
+    TRUSTED_SCT_INCIDENTS_REL_PREFIX prefijo SCT XML (default sct/traffic_incidents)
+    SCT_FILTER_BARCELONA_ONLY        true per filtrar files XML que continguin "Barcelona"
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import traceback
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -43,6 +52,14 @@ for _p in (_REPO_WORK, _SCRIPT_DIR):
 
 from cleaner import CleanOptions, Cleaner  # noqa: E402
 from spark_client import SparkClient  # noqa: E402
+from trusted_paths import relative_path_under_base, trusted_target_uri  # noqa: E402
+from trusted_pipelines import (  # noqa: E402
+    clean_options_for_accidents_gu,
+    partition_roots_by_pipeline,
+    process_sct_traffic_incidents_parquet,
+    process_transit_posts_union,
+)
+from traffic_cameras_media import process_traffic_cameras_persistent_to_trusted  # noqa: E402
 
 
 def _env(name: str, default: str) -> str:
@@ -54,12 +71,12 @@ def ensure_bucket_exists(bucket: str) -> None:
     import boto3
     from botocore.exceptions import ClientError
 
-    endpoint = _env("S3A_ENDPOINT", "http://seaweedfs:8333")
-    access_key = _env("S3A_ACCESS_KEY", "admin")
-    secret_key = _env("S3A_SECRET_KEY", "admin")
+    endpoint = _env("S3A_ENDPOINT", _env("S3_ENDPOINT", "http://seaweedfs:8333"))
+    access_key = _env("S3A_ACCESS_KEY", _env("AWS_ACCESS_KEY_ID", "admin"))
+    secret_key = _env("S3A_SECRET_KEY", _env("AWS_SECRET_ACCESS_KEY", "admin"))
 
     s3 = boto3.client(
-        's3',
+        "s3",
         endpoint_url=endpoint,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
@@ -191,29 +208,19 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
     return walk(base_path.toString())
 
 
-def relative_path_under_base(base_uri: str, root_uri: str) -> str:
-    """Parte relativa de `root_uri` respecto a `base_uri` (sin barra inicial/final)."""
-    b = base_uri.rstrip("/")
-    r = root_uri.rstrip("/")
-    if not r.startswith(b):
-        raise ValueError(f"La raíz {root_uri!r} no cuelga de la base {base_uri!r}")
-    if r == b:
-        return ""
-    # Tras el prefijo común debe venir una barra
-    return r[len(b) + 1 :]
-
-
-def trusted_target_uri(trusted_base_uri: str, relative: str) -> str:
-    """Construye s3a://trusted-zone/.../relativo/ a partir de la base trusted y el sufijo."""
-    t = trusted_base_uri.rstrip("/")
-    if relative:
-        return f"{t}/{relative}/"
-    return f"{t}/"
-
-
 def main() -> None:
     landing_base = landing_base_uri()
     trusted_base = trusted_base_uri()
+
+    # Fase 0 (boto3, sense Spark): imatges persistent → trusted. S'executa sempre primer.
+    ensure_bucket_exists(_env("TRUSTED_BUCKET", "trusted-zone"))
+    print("=== Fase 0: traffic_cameras (persistent-landing → trusted-zone, imágenes) ===")
+    try:
+        n_img = process_traffic_cameras_persistent_to_trusted()
+        print(f"=== Fase 0 terminada: {n_img} imagen(es) procesada(s) ===")
+    except Exception as ex:
+        print(f"=== Fase 0 ERROR (imágenes): {ex} ===")
+        traceback.print_exc()
 
     spark_client = build_spark_session()
     spark = spark_client.connect()
@@ -223,27 +230,51 @@ def main() -> None:
 
         roots = discover_parquet_roots(spark, landing_base)
         if not roots:
-            print(f"No se encontraron carpetas Parquet bajo: {landing_base}")
-            return
+            print(f"Aviso: no se encontraron carpetas Parquet bajo: {landing_base}")
+        else:
+            lb = landing_base.rstrip("/")
+            transit_roots, sct_roots, default_roots = partition_roots_by_pipeline(landing_base, roots)
 
-        ensure_bucket_exists(_env("TRUSTED_BUCKET", "trusted-zone"))
-
-        print(f"Base landing:  {landing_base}")
-        print(f"Base trusted: {trusted_base}")
-        print(f"Datasets detectados: {len(roots)}")
-
-        for root in roots:
-            rel = relative_path_under_base(landing_base.rstrip("/"), root.rstrip("/"))
-            out = trusted_target_uri(trusted_base, rel)
-            print(f"  → {root}  ==>  {out}")
-            cleaner.clean_parquet(
-                input_path=root,
-                output_path=out,
-                options=options,
-                write_mode="overwrite",
+            print(f"Base landing:  {landing_base}")
+            print(f"Base trusted: {trusted_base}")
+            print(
+                f"Datasets Parquet detectados: {len(roots)} "
+                f"(transit_posts={len(transit_roots)}, sct={len(sct_roots)}, otros={len(default_roots)})"
             )
 
-        print("Limpieza y escritura en trusted-zone completadas.")
+            if transit_roots:
+                out_transit = trusted_target_uri(trusted_base, "transit_posts")
+                print(f"  → [pipeline transit_posts] {len(transit_roots)} carpetas  ==>  {out_transit}")
+                process_transit_posts_union(spark, cleaner, transit_roots, out_transit)
+
+            for root in sct_roots:
+                rel = relative_path_under_base(lb, root.rstrip("/"))
+                out = trusted_target_uri(trusted_base, rel)
+                print(f"  → [pipeline sct/xml] {root}  ==>  {out}")
+                process_sct_traffic_incidents_parquet(cleaner, root, out)
+
+            for root in default_roots:
+                rel = relative_path_under_base(lb, root.rstrip("/"))
+                out = trusted_target_uri(trusted_base, rel)
+                print(f"  → {root}  ==>  {out}")
+                rel_lower = rel.lower()
+                if rel_lower.startswith("ajuntament_bcn/accidents_gu"):
+                    df_ag = cleaner.read_parquet(root.rstrip("/") + "/")
+                    opts_ag = clean_options_for_accidents_gu(df_ag)
+                    cleaned_ag = cleaner.clean(df_ag, options=opts_ag)
+                    cleaner.write_parquet(cleaned_ag, out.rstrip("/") + "/", mode="overwrite")
+                else:
+                    cleaner.clean_parquet(
+                        input_path=root,
+                        output_path=out,
+                        options=options,
+                        write_mode="overwrite",
+                    )
+
+            print("Limpieza y escritura Parquet en trusted-zone completadas.")
+    except Exception as ex:
+        print(f"ERROR en pipeline Parquet (trusted): {ex}")
+        traceback.print_exc()
     finally:
         spark_client.close()
 
