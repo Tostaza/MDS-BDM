@@ -40,7 +40,6 @@ class CleanOptions:
 class Cleaner:
     """
     Orquesta lectura Parquet → transformaciones de limpieza → escritura Parquet.
-
     Recibe la SparkSession ya configurada (master, S3A, etc.); esta clase no crea el cluster.
     """
 
@@ -56,7 +55,6 @@ class Cleaner:
     def read_parquet(self, path: str) -> DataFrame:
         """
         Carga un directorio o archivo Parquet en un DataFrame lazy (no ejecuta hasta una acción).
-
         `path` puede ser ruta local (`file:///...`) o objeto store (`s3a://bucket/prefijo/`).
         """
         return self._spark.read.parquet(path)
@@ -64,8 +62,8 @@ class Cleaner:
     def clean(self, df: DataFrame, options: Optional[CleanOptions] = None) -> DataFrame:
         """
         Aplica las reglas de `CleanOptions` en orden: strings → filas vacías → dropna → deduplicar.
-
         Devuelve un nuevo plan lógico (DataFrame); hasta que no hagas count/write, Spark no ejecuta.
+        Bàsciamente lo que hace es aplicar las opciones de limpieza que se le pasan, aplicadas al dataframe.
         """
         opts = options or CleanOptions()
         out = df
@@ -104,7 +102,6 @@ class Cleaner:
     ) -> None:
         """
         Materializa el DataFrame en formato Parquet en `path`.
-
         - `mode`: típico "overwrite" (reemplaza datos en esa ruta) o "append".
         - `partition_by`: si indicas columnas, Spark crea subcarpetas por valor (particionado Hive-style).
         """
@@ -123,8 +120,7 @@ class Cleaner:
     ) -> DataFrame:
         """
         Atajo: lee desde `input_path`, limpia con `clean()` y escribe en `output_path`.
-
-        El `return` es el DataFrame limpio por si quieres hacer `.count()`, tests o un paso siguiente.
+        El `return` es el DataFrame limpio por si quisieramos hacer en algun punto del codigo `.count()`, tests o un paso siguiente.
         La escritura en disco ya se dispara aquí (acción de write).
         """
         df = self.read_parquet(input_path)
@@ -136,8 +132,9 @@ class Cleaner:
     def _normalize_string_columns(df: DataFrame, *, trim: bool, empty_as_null: bool) -> DataFrame:
         """
         Solo toca columnas cuyo tipo es StringType en el schema.
-
         Recorre el schema para no intentar trim/nullif en números o structs; evita errores de tipos.
+        Bàsicamente lo que hace es mira si en el catalogo de options hay que trimar o nullifar las columnas de texto.
+        En el caso que si haya que aplicar ese tratamiento, lo hace para todas las columnas de texto del dataframe.
         """
         out = df
         for field in out.schema.fields:
