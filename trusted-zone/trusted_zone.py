@@ -8,6 +8,7 @@ Casos especials (veure ``trusted_pipelines.py``):
 - ``transit_posts/`` (Nitter / Delta per post): es fusionen totes les arrels en un sol
   Parquet a ``trusted-zone/.../transit_posts/`` amb camps plans per retrieval.
 - ``sct/traffic_incidents/``: enriqueix ``xml_content`` i dedup per ``file_name``.
+- ``aemet/``: predicció horària → una fila per hora (columnes planes).
 - La resta: mateixa jerarquia relativa Parquet → Parquet amb ``Cleaner``.
 
 Ejecución típica (desde la raíz del repo):
@@ -33,6 +34,7 @@ Variables de entorno opcionales:
     DATA_PREFIX           prefijo común dentro de ambos buckets, ej. mi-proyecto/
     TRUSTED_TRANSIT_REL_PREFIX       prefijo relatiu landing per Twitter (default transit_posts)
     TRUSTED_SCT_INCIDENTS_REL_PREFIX prefijo SCT XML (default sct/traffic_incidents)
+    TRUSTED_AEMET_REL_PREFIX         prefijo AEMET (default aemet)
     SCT_FILTER_BARCELONA_ONLY        true per filtrar files XML que continguin "Barcelona"
 """
 
@@ -60,6 +62,7 @@ from trusted_paths import relative_path_under_base, trusted_target_uri  # noqa: 
 from trusted_pipelines import (  # noqa: E402
     clean_options_for_accidents_gu,
     partition_roots_by_pipeline,
+    process_aemet_predictions_parquet,
     process_sct_traffic_incidents_parquet,
     process_transit_posts_union,
 )
@@ -238,7 +241,7 @@ def main() -> None:
     Orden de ejecución:
         1. **Fase 0 (boto3, sin Spark):** imágenes ``traffic_cameras`` de persistent a trusted
            (ver ``traffic_cameras_media``). Así no depende de que Spark/Parquet fallen después.
-        2. **Spark:** descubrimiento de carpetas Parquet, pipelines Twitter/SCT/accidents GU y
+        2. **Spark:** descubrimiento de carpetas Parquet, pipelines Twitter/SCT/AEMET/accidents GU y
            el resto con ``Cleaner.clean_parquet``.
 
     Variables principales: ver docstring del módulo al inicio de este archivo.
@@ -268,13 +271,16 @@ def main() -> None:
             print(f"Aviso: no se encontraron carpetas Parquet bajo: {landing_base}")
         else:
             lb = landing_base.rstrip("/")
-            transit_roots, sct_roots, default_roots = partition_roots_by_pipeline(landing_base, roots)
+            transit_roots, sct_roots, aemet_roots, default_roots = partition_roots_by_pipeline(
+                landing_base, roots
+            )
 
             print(f"Base landing:  {landing_base}")
             print(f"Base trusted: {trusted_base}")
             print(
                 f"Datasets Parquet detectados: {len(roots)} "
-                f"(transit_posts={len(transit_roots)}, sct={len(sct_roots)}, otros={len(default_roots)})"
+                f"(transit_posts={len(transit_roots)}, sct={len(sct_roots)}, "
+                f"aemet={len(aemet_roots)}, otros={len(default_roots)})"
             )
 
             if transit_roots:
@@ -287,6 +293,12 @@ def main() -> None:
                 out = trusted_target_uri(trusted_base, rel)
                 print(f"  → [pipeline sct/xml] {root}  ==>  {out}")
                 process_sct_traffic_incidents_parquet(cleaner, root, out)
+
+            for root in aemet_roots:
+                rel = relative_path_under_base(lb, root.rstrip("/"))
+                out = trusted_target_uri(trusted_base, rel)
+                print(f"  → [pipeline aemet horari] {root}  ==>  {out}")
+                process_aemet_predictions_parquet(cleaner, root, out)
 
             for root in default_roots:
                 rel = relative_path_under_base(lb, root.rstrip("/"))
