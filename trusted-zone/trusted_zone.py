@@ -14,10 +14,14 @@ Ejecución típica (desde la raíz del repo):
 
     python trusted-zone/trusted_zone.py
 
-spark-submit (Docker): la **arrel del repo** ha d'estar al PYTHONPATH (paquet `spark_client/` al costat de `trusted-zone/`).
+    spark-submit (Docker): cal que els workers puguin importar ``trusted_pipelines`` (UDF XML SCT).
+    Opció A — afegir la carpeta del job al PYTHONPATH:
 
-    export PYTHONPATH=/opt/spark/work-dir:/opt/spark/work-dir/dags
+    export PYTHONPATH=/opt/spark/work-dir/trusted-zone:/opt/spark/work-dir:/opt/spark/work-dir/dags
     spark-submit --master spark://spark-master:7077 /opt/spark/work-dir/trusted-zone/trusted_zone.py
+
+    Opció B — ``trusted_zone.main`` ja crida ``addPyFile`` per a ``cleaner.py`` i ``trusted_pipelines.py``
+    després de crear la sessió (no cal PYTHONPATH extra per a aquest UDF).
 
 Variables de entorno opcionales:
     S3A_ENDPOINT          URL del API S3 de SeaweedFS (ej. http://seaweedfs:8333 en Docker)
@@ -92,6 +96,20 @@ def ensure_bucket_exists(bucket: str) -> None:
     except ClientError:
         s3.create_bucket(Bucket=bucket)
         print(f"Bucket '{bucket}' created.")
+
+
+def _register_local_pyfiles_for_udf_workers(spark: SparkSession) -> None:
+    """
+    Els UDF de PySpark es deserialitzen als workers amb cloudpickle i exigeixen poder fer
+    ``import trusted_pipelines`` (i ``cleaner``, importat per aquest mòdul). El driver ja té
+    ``trusted-zone/`` a ``sys.path``; els workers no, llevat que es distribueixin els ``.py``.
+    """
+    zone = Path(__file__).resolve().parent
+    sc = spark.sparkContext
+    for filename in ("cleaner.py", "trusted_pipelines.py"):
+        path = zone / filename
+        if path.is_file():
+            sc.addPyFile(str(path))
 
 
 def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> SparkClient:
@@ -240,6 +258,7 @@ def main() -> None:
 
     spark_client = build_spark_session()
     spark = spark_client.connect()
+    _register_local_pyfiles_for_udf_workers(spark)
     try:
         cleaner = Cleaner(spark)
         options = CleanOptions()
