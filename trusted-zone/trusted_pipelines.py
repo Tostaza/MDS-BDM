@@ -445,8 +445,7 @@ def process_transit_posts_union(
         trim_strings=True,
         empty_string_as_null=True,
         drop_duplicates=True,
-        duplicate_subset=dup_subset,
-        dropna_subset=None,
+        duplicate_subset=dup_subset
     )
     cleaned = cleaner.clean(df, options=opts)
     out = trusted_output_uri.rstrip("/") + "/"

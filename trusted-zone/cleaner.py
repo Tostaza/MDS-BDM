@@ -31,8 +31,6 @@ class CleanOptions:
     duplicate_subset: Optional[Sequence[str]] = None
     # Si True, borra filas donde TODAS las columnas son NULL (filas “vacías”).
     drop_rows_all_null: bool = False
-    # Si no es None, `dropna` de Spark: borra filas con NULL en esas columnas.
-    dropna_subset: Optional[Sequence[str]] = None
     # Cómo cuenta los NULL en dropna: "any" = basta un NULL en el subset; "all" = todos NULL en el subset.
     dropna_how: str = "any"
 
@@ -81,10 +79,6 @@ class Cleaner:
                 cond = c if cond is None else (cond | c)
             if cond is not None:
                 out = out.filter(cond)
-
-        # 3) Opcional: dropna sobre columnas críticas (claves, fechas obligatorias, etc.).
-        if opts.dropna_subset:
-            out = out.dropna(how=opts.dropna_how, subset=list(opts.dropna_subset))
 
         # 4) Opcional: deduplicar (por todas las columnas o solo por `duplicate_subset`).
         if opts.drop_duplicates:
