@@ -1,5 +1,5 @@
 """
-Análisis exploratorio de tablas Parquet (sin modelos de predicción).
+Análisis exploratorio de tablas Parquet ya cargadas en el dashboard (sin joins ni ETL).
 
 Resúmenes numéricos (media, mediana, min, max, desv. típica), histogramas y barras de frecuencia
 para columnas categóricas de baja cardinalidad. Pensado para accidentes, lluvia (Kanishka), AEMET, etc.
@@ -230,25 +230,44 @@ def render_tweet_feed(df: pd.DataFrame, key_prefix: str, max_rows_cap: int = 15_
     date_c = cols["date"]
     link_c = cols["link"]
 
-    order = st.radio(
-        "Orden",
-        ("Más recientes primero", "Más antiguos primero", "Orden del fichero"),
-        horizontal=True,
-        key=f"{key_prefix}_tweet_order",
-    )
+    c1, c2, c3 = st.columns([1.1, 1, 1.2])
+    with c1:
+        order = st.selectbox(
+            "Orden",
+            ("Más recientes primero", "Más antiguos primero", "Orden del fichero"),
+            key=f"{key_prefix}_tweet_order",
+        )
     work = df.copy()
     if date_c and date_c in work.columns and order != "Orden del fichero":
         work["_ts"] = pd.to_datetime(work[date_c], errors="coerce")
         ascending = order == "Más antiguos primero"
         work = work.sort_values("_ts", ascending=ascending, na_position="last")
-    per_page = st.select_slider("Tweets por página", options=[10, 20, 40, 60, 100], value=20, key=f"{key_prefix}_per_page")
-    n_pages = max(1, (len(work) + per_page - 1) // per_page)
-    page = st.number_input("Página", min_value=1, max_value=n_pages, value=1, step=1, key=f"{key_prefix}_tweet_page")
-    start = (page - 1) * per_page
-    slice_df = work.iloc[start : start + per_page]
 
-    st.caption(f"Mostrando filas **{start + 1}–{min(start + per_page, len(work))}** de **{len(work):,}**")
+    n = len(work)
+    with c2:
+        ventana = st.selectbox(
+            "Tweets visibles",
+            (4, 6, 8, 10, 14),
+            index=2,
+            format_func=lambda x: f"{x} en la caja",
+            key=f"{key_prefix}_tweet_window",
+        )
+    max_start = max(0, n - ventana)
+    with c3:
+        start = st.slider(
+            "Desplazar (primera fila)",
+            min_value=0,
+            max_value=max_start,
+            value=0,
+            key=f"{key_prefix}_tweet_slide",
+        )
 
+    slice_df = work.iloc[start : start + ventana]
+    st.caption(
+        f"Filas **{start + 1}–{min(start + ventana, n)}** de **{n:,}** · desplázate con el slider sin alargar la página."
+    )
+
+    parts: list[str] = ['<div class="tweet-scroll-box">']
     for _, row in slice_df.iterrows():
         raw_text = row.get(text_c, "")
         text_str = "" if pd.isna(raw_text) else str(raw_text)
@@ -276,7 +295,7 @@ def render_tweet_feed(df: pd.DataFrame, key_prefix: str, max_rows_cap: int = 15_
                 url = html.escape(str(u).strip())
                 link_html = f'<a href="{url}" target="_blank" rel="noopener" style="color:#5eead4;font-size:0.85rem;">Enlace ↗</a>'
 
-        st.markdown(
+        parts.append(
             f"""
             <div class="tweet-card-wrap">
               <div class="tweet-card">
@@ -292,6 +311,7 @@ def render_tweet_feed(df: pd.DataFrame, key_prefix: str, max_rows_cap: int = 15_
                 </div>
               </div>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)

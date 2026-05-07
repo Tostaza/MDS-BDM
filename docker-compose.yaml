@@ -211,8 +211,12 @@ services:
       - DATA_PREFIX=
       # Prefijos Parquet en exploitation para pestañas ML (opcional; valores por defecto en app.py)
       - ACCIDENTS_GU_ML_PREFIX=ajuntament_bcn/accidents_gu/
+      # Salida del join Spark en exploitation_zone (accidents + features trànsit)
+      - BCN_ML_READY_PREFIX=ajuntament_bcn/ml_ready_accidents_traffic/
       - AEMET_ML_PREFIX=aemet/
       - HF_RAIN_ML_PREFIX=huggingface/kanishka089/
+      - TOMTOM_ML_PREFIX=TOMTOM/
+      - SCT_TRAFFIC_INCIDENTS_PREFIX=sct/traffic_incidents/
       # Parquet de tweets RSS/Nitter en exploitation (misma jerarquía que en trusted)
       - TRANSIT_POSTS_PREFIX=transit_posts/
       - KAGGLE_ML_PREFIX=

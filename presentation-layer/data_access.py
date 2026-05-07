@@ -1,10 +1,7 @@
 """
-Acceso a datos del **dashboard** (exploitation-zone) en S3/SeaweedFS.
+I/O del dashboard sobre S3/SeaweedFS (bucket de explotación): lectura Parquet e imágenes.
 
-Incluye:
-    - ``load_parquet_prefix`` / ``s3_storage_options``: lectura Parquet con fsspec/pyarrow.
-    - Funciones **boto3** para la galería de cámaras: listar sitios y objetos bajo
-      ``traffic_cameras/gallery/`` y descargar bytes para ``st.image`` en Streamlit.
+No contiene joins ni transformaciones ETL; esas operaciones viven en ``exploitation-zone/`` (Spark).
 """
 
 from __future__ import annotations

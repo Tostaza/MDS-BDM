@@ -1,6 +1,8 @@
 """
-Dashboard capa presentación: una sola página con datos en exploitation-zone (S3),
-análisis exploratorio (estadísticos y gráficos), vista tipo timeline para tweets y ChromaDB.
+Dashboard (capa presentación): lectura de Parquet e imágenes ya materializados en el bucket
+de explotación, modelos sklearn en memoria para la UI y componentes Streamlit.
+
+Los joins y el ETL pesado están en ``exploitation-zone/`` (Spark), no en esta carpeta.
 
 Uso (Docker): http://localhost:8501 tras `docker compose up dashboard`.
 """
@@ -14,6 +16,7 @@ import pandas as pd
 import streamlit as st
 
 from analytics import render_parquet_analysis, render_tweet_feed
+from dashboard_views import render_unified_dashboard
 from data_access import (
     get_s3_object_bytes,
     list_traffic_camera_gallery_objects,
@@ -32,97 +35,142 @@ def _inject_dashboard_css() -> None:
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
         html, body, [class*="stApp"] {
-            font-family: 'Outfit', system-ui, sans-serif;
+            font-family: 'DM Sans', 'Outfit', system-ui, sans-serif;
         }
         code, pre, .stMarkdown code {
             font-family: 'JetBrains Mono', monospace !important;
         }
         .stApp {
-            background: linear-gradient(165deg, #0c1222 0%, #121a2e 35%, #0f172a 70%, #0c4a6e 100%);
+            background: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(45, 212, 191, 0.12), transparent 50%),
+                radial-gradient(ellipse 80% 50% at 100% 50%, rgba(99, 102, 241, 0.08), transparent 45%),
+                linear-gradient(168deg, #070b14 0%, #0f172a 38%, #0c1a2e 72%, #082f49 100%);
             background-attachment: fixed;
         }
         [data-testid="stAppViewContainer"] > .main {
             background: transparent;
         }
         .block-container {
-            padding-top: 1.25rem;
-            padding-bottom: 3rem;
-            max-width: 1280px;
+            padding-top: 1.5rem;
+            padding-bottom: 3.5rem;
+            max-width: 1180px;
         }
-        [data-testid="stHeader"] { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); }
-        h1, h2, h3 { color: #f1f5f9 !important; letter-spacing: -0.02em; }
+        [data-testid="stHeader"] {
+            background: rgba(7, 11, 20, 0.72) !important;
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(94, 234, 212, 0.08);
+        }
+        h1, h2, h3 { color: #f8fafc !important; letter-spacing: -0.03em; font-weight: 700 !important; }
+        h3 { font-size: 1.15rem !important; margin-top: 0.35rem !important; }
         .stMarkdown p, .stMarkdown li, label, span[data-testid="stMarkdownContainer"] p {
             color: #cbd5e1;
         }
         [data-baseweb="select"] > div, [data-baseweb="input"] > div {
-            background-color: rgba(30, 41, 59, 0.85) !important;
-            border-color: rgba(148, 163, 184, 0.25) !important;
+            background-color: rgba(15, 23, 42, 0.92) !important;
+            border: 1px solid rgba(94, 234, 212, 0.22) !important;
+            border-radius: 12px !important;
+        }
+        [data-testid="stSelectbox"] label, [data-testid="stSlider"] label, [data-testid="stNumberInput"] label {
+            font-weight: 600 !important;
+            color: #e2e8f0 !important;
+            font-size: 0.88rem !important;
         }
         .stTextInput input, .stNumberInput input {
-            background-color: rgba(30, 41, 59, 0.9) !important;
-            color: #e2e8f0 !important;
-            border: 1px solid rgba(94, 234, 212, 0.2) !important;
-            border-radius: 10px !important;
+            background-color: rgba(15, 23, 42, 0.95) !important;
+            color: #f1f5f9 !important;
+            border: 1px solid rgba(94, 234, 212, 0.25) !important;
+            border-radius: 12px !important;
         }
         div[data-testid="stExpander"] {
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(94, 234, 212, 0.15);
-            border-radius: 12px;
+            background: linear-gradient(145deg, rgba(15, 23, 42, 0.65), rgba(30, 41, 59, 0.35));
+            border: 1px solid rgba(94, 234, 212, 0.14);
+            border-radius: 16px;
         }
-        .stDataFrame { border-radius: 12px; overflow: hidden; }
+        .stDataFrame { border-radius: 14px; overflow: hidden; border: 1px solid rgba(148, 163, 184, 0.12); }
         [data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(15, 23, 42, 0.45) !important;
-            border-radius: 16px !important;
-            border-color: rgba(94, 234, 212, 0.18) !important;
-            padding: 0.35rem 0.5rem 0.85rem;
+            background: linear-gradient(155deg, rgba(15, 23, 42, 0.55), rgba(30, 41, 59, 0.25)) !important;
+            border-radius: 20px !important;
+            border: 1px solid rgba(94, 234, 212, 0.2) !important;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+            padding: 0.65rem 0.85rem 1rem !important;
         }
         div[data-testid="stAlert"] {
-            background-color: rgba(30, 41, 59, 0.92) !important;
-            border: 1px solid rgba(148, 163, 184, 0.2);
+            background-color: rgba(15, 23, 42, 0.9) !important;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 14px;
         }
         .stButton > button {
-            background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%);
+            background: linear-gradient(135deg, #0d9488 0%, #0e7490 45%, #6366f1 130%);
             color: white;
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             font-weight: 600;
-            padding: 0.5rem 1.25rem;
-            box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35);
+            padding: 0.55rem 1.4rem;
+            box-shadow: 0 4px 20px rgba(13, 148, 136, 0.4);
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
         .stButton > button:hover {
-            box-shadow: 0 6px 20px rgba(34, 211, 238, 0.4);
-            border: 1px solid rgba(165, 243, 252, 0.5);
+            box-shadow: 0 8px 28px rgba(34, 211, 238, 0.35);
+            border: 1px solid rgba(165, 243, 252, 0.45);
         }
-        .tweet-card-wrap { margin-bottom: 0.15rem; }
+        div[data-testid="stSlider"] > div > div > div {
+            background: linear-gradient(90deg, #14b8a6, #6366f1) !important;
+        }
+        .news-scroll-box, .tweet-scroll-box {
+            max-height: 380px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 0.75rem 0.6rem 0.75rem 0.25rem;
+            margin-top: 0.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(94, 234, 212, 0.18);
+            background: rgba(7, 11, 20, 0.45);
+            box-shadow: inset 0 2px 12px rgba(0,0,0,0.25);
+        }
+        .news-scroll-box::-webkit-scrollbar, .tweet-scroll-box::-webkit-scrollbar { width: 8px; }
+        .news-scroll-box::-webkit-scrollbar-thumb, .tweet-scroll-box::-webkit-scrollbar-thumb {
+            background: rgba(45, 212, 191, 0.35);
+            border-radius: 8px;
+        }
+        .tweet-card-wrap { margin-bottom: 0.35rem; }
         .tweet-card {
             display: flex;
-            gap: 0.9rem;
-            padding: 1rem 1.15rem;
-            background: rgba(15, 23, 42, 0.72);
-            border: 1px solid rgba(148, 163, 184, 0.14);
-            border-radius: 16px;
-            margin-bottom: 0.6rem;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.2);
+            gap: 0.85rem;
+            padding: 0.95rem 1rem;
+            background: linear-gradient(135deg, rgba(30, 41, 59, 0.75), rgba(15, 23, 42, 0.85));
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 14px;
+            margin-bottom: 0.5rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.22);
         }
         .tweet-avatar {
-            width: 46px; height: 46px; flex-shrink: 0;
+            width: 42px; height: 42px; flex-shrink: 0;
             border-radius: 999px;
-            background: linear-gradient(145deg, #14b8a6, #6366f1);
-            box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.25);
+            background: linear-gradient(145deg, #2dd4bf, #818cf8);
+            box-shadow: 0 0 0 2px rgba(94, 234, 212, 0.2);
         }
         .tweet-body { flex: 1; min-width: 0; }
         .tweet-meta {
             display: flex; align-items: center; flex-wrap: wrap; gap: 0.35rem;
-            margin-bottom: 0.4rem;
+            margin-bottom: 0.35rem;
         }
-        .tweet-author { font-weight: 700; color: #f8fafc !important; font-size: 0.95rem; }
-        .tweet-date { color: #94a3b8 !important; font-size: 0.82rem; }
+        .tweet-author { font-weight: 700; color: #f8fafc !important; font-size: 0.92rem; }
+        .tweet-date { color: #94a3b8 !important; font-size: 0.8rem; }
         .tweet-dot { color: #475569; }
         .tweet-text {
-            color: #e2e8f0 !important; font-size: 0.96rem; line-height: 1.5;
+            color: #e2e8f0 !important; font-size: 0.94rem; line-height: 1.55;
             word-break: break-word;
+        }
+        .pill-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.65rem;
+            border-radius: 999px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
         }
         </style>
         """,
@@ -141,12 +189,11 @@ def _hero() -> None:
             border: 1px solid rgba(94, 234, 212, 0.25);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
         ">
-            <p style="margin:0 0 0.35rem 0; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.2em; color:#5eead4; font-weight:600;">Exploitation · análisis · visión</p>
-            <h1 style="margin:0; font-size:clamp(1.75rem, 4vw, 2.35rem); font-weight:700; color:#f8fafc; line-height:1.15;">BDM — panel único</h1>
-            <p style="margin:0.75rem 0 0 0; font-size:1.05rem; color:#94a3b8; max-width:52rem; line-height:1.55;">
-                <strong style="color:#e2e8f0;">Sin predicciones ML</strong> en pantalla: solo <strong style="color:#e2e8f0;">estadísticos</strong>,
-                histogramas, barras de frecuencia y una <strong style="color:#e2e8f0;">vista tipo timeline</strong> para los tweets
-                de tránsito, más cámaras, similaridad y Chroma.
+            <p style="margin:0 0 0.35rem 0; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.22em; color:#5eead4; font-weight:600;">BDM · datos en explotación</p>
+            <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Panel de movilidad y clima</h1>
+            <p style="margin:0.85rem 0 0 0; font-size:1.05rem; color:#94a3b8; max-width:52rem; line-height:1.6;">
+                TomTom, <strong style="color:#e2e8f0;">BCN</strong> (predicción por zona), cámaras, <strong style="color:#e2e8f0;">Kanishka</strong>, AEMET y noticias.
+                Más abajo: análisis detallado, explorador Parquet y Chroma. Origen de tablas: job <code style="color:#99f6e4;">exploitation-zone</code>.
             </p>
         </div>
         """,
@@ -294,30 +341,31 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
             st.image(Image.open(io.BytesIO(body)), caption=choice, use_container_width=True)
 
 
-def section_similarity(bucket: str, default_sim: str) -> None:
-    st.caption("Salida de `twitter_similarity.py` (`similarity_edges.parquet`).")
-    thr = st.slider("Umbral mínimo", 0.5, 1.0, 0.8, 0.05, key="sim_thr")
-    df_sim = cached_load_df(bucket, default_sim)
-    if df_sim.empty:
-        st.info(
-            f"Sin datos en `s3://{bucket}/{default_sim}/`. Ejecuta embeddings + script de similaridad."
-        )
-    else:
-        if "similarity" in df_sim.columns:
-            df_sim = df_sim[df_sim["similarity"] >= thr]
-        st.dataframe(df_sim, use_container_width=True, height=320)
-        with st.expander("Análisis de la tabla de pares", expanded=False):
-            render_parquet_analysis(df_sim, "sim_edges")
-
-
 def section_explorer(bucket: str) -> None:
     st.caption("Cualquier prefijo Parquet dentro del bucket exploitation.")
-    prefix = st.text_input(
-        "Prefijo (sin s3:// ni bucket)",
-        value="",
-        placeholder="ej: mi_proyecto/reportes/",
-        key="expl_prefix",
+    preset = st.selectbox(
+        "Elegir dataset (prefijo)",
+        (
+            "— Personalizado (escribir abajo) —",
+            "transit_posts/",
+            "ajuntament_bcn/accidents_gu/",
+            "ajuntament_bcn/ml_ready_accidents_traffic/",
+            "aemet/",
+            "sct/traffic_incidents/",
+            "TOMTOM/",
+        ),
+        key="expl_preset",
     )
+    if preset.startswith("—"):
+        prefix = st.text_input(
+            "Prefijo manual (sin s3:// ni bucket)",
+            value="",
+            placeholder="ej: mi_proyecto/reportes/",
+            key="expl_prefix",
+        )
+    else:
+        prefix = preset
+        st.caption(f"Prefijo activo: `{prefix}`")
     if st.button("Cargar y analizar", key="expl_load"):
         df = cached_load_df(bucket, prefix)
         if df.empty:
@@ -354,7 +402,6 @@ def main() -> None:
     _hero()
 
     exploitation_bucket = _env("EXPLOITATION_BUCKET", "exploitation-zone")
-    default_sim = _env("SIMILARITY_OUTPUT_PREFIX", "twitter_similarity_pairs")
     pfx_acc = _env("ACCIDENTS_GU_ML_PREFIX", "ajuntament_bcn/accidents_gu/")
     pfx_aemet = _env("AEMET_ML_PREFIX", "aemet/")
     pfx_hf = _env("HF_RAIN_ML_PREFIX", "huggingface/kanishka089/")
@@ -372,13 +419,31 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    _section_title("Tweets de tránsito (RSS / Nitter)", "Vista tipo timeline; debajo, estadísticos del mismo Parquet.")
-    with st.container(border=True):
+    pfx_tomtom = _env("TOMTOM_ML_PREFIX", "TOMTOM/")
+    pfx_bcn_ml = _env("BCN_ML_READY_PREFIX", "ajuntament_bcn/ml_ready_accidents_traffic/")
+    pfx_sct = _env("SCT_TRAFFIC_INCIDENTS_PREFIX", "sct/traffic_incidents/")
+
+    _section_title(
+        "Panel principal (datos ya servidos desde el bucket)",
+        "TomTom, BCN (dataset ML-ready), cámaras, Kanishka, AEMET por hora y noticias SCT+Twitter.",
+    )
+    render_unified_dashboard(
+        exploitation_bucket,
+        data_prefix,
+        tomtom_prefix=pfx_tomtom,
+        bcn_ml_ready_prefix=pfx_bcn_ml,
+        aemet_prefix=pfx_aemet,
+        hf_prefix=pfx_hf,
+        twitter_prefix=pfx_transit,
+        sct_prefix=pfx_sct,
+    )
+
+    with st.expander("Tweets de tránsito — timeline y análisis Parquet", expanded=False):
         section_transit_twitter(exploitation_bucket, pfx_transit)
 
     _section_title(
-        "Datasets tabulares (accidentes, lluvia, AEMET…)",
-        "Medias, medianas, mín/máx, histogramas y barras de frecuencia. Sin formularios de predicción.",
+        "Datasets tabulares (detalle)",
+        "Histogramas y frecuencias para accidentes, Kaggle, AEMET y Kanishka (sin duplicar la vista unificada de arriba).",
     )
     r1a, r1b = st.columns(2, gap="large")
     with r1a:
@@ -400,20 +465,10 @@ def main() -> None:
             st.subheader("Kanishka · lluvia")
             section_kanishka(exploitation_bucket, pfx_hf)
 
-    _section_title("Cámaras de tráfico", "Galería por ubicación desde exploitation-zone.")
+    _section_title("Herramientas", "Explorador de Parquet por prefijo y estado de ChromaDB.")
     with st.container(border=True):
-        section_traffic_cameras(exploitation_bucket, data_prefix)
-
-    _section_title("Similaridad, explorador y Chroma", "Pares similares, cualquier prefijo Parquet y colecciones vectoriales.")
-    r3a, r3b = st.columns(2, gap="large")
-    with r3a:
-        with st.container(border=True):
-            st.subheader("Similaridad Twitter")
-            section_similarity(exploitation_bucket, default_sim)
-    with r3b:
-        with st.container(border=True):
-            st.subheader("Explorador Parquet")
-            section_explorer(exploitation_bucket)
+        st.subheader("Explorador Parquet")
+        section_explorer(exploitation_bucket)
 
     with st.container(border=True):
         st.subheader("ChromaDB")
@@ -422,7 +477,7 @@ def main() -> None:
     st.markdown(
         """
         <div style="text-align:center; margin-top:2.5rem; padding-top:1.5rem; border-top:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:0.85rem;">
-            BDM · capa de presentación · análisis exploratorio (sin modelos predictivos en UI)
+            BDM · capa de presentación · explotación unificada + análisis exploratorio
         </div>
         """,
         unsafe_allow_html=True,

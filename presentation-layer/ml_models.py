@@ -1,8 +1,8 @@
 """
-Modelos de predicción entrenados con datos leídos desde exploitation-zone (Parquet en S3).
+Modelos sklearn entrenados **en memoria** a partir de Parquet ya cargados (vía ``data_access``).
 
-Cada función devuelve un diccionario con pipeline ajustado, métricas y metadatos para
-construir formularios de predicción en Streamlit.
+Sirven para formularios de predicción en Streamlit. No materializan tablas ni hacen joins;
+el pipeline Spark que prepara los datasets está en ``exploitation-zone/``.
 """
 
 from __future__ import annotations
