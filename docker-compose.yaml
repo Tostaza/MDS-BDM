@@ -5,10 +5,10 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider distributions you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.2}
-  # build:
-  #   context: .
-  #   dockerfile: ./docker/airflow/Dockerfile
+  # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.2}
+  build:
+    context: .
+    dockerfile: ./docker/airflow/Dockerfile
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:
@@ -19,7 +19,7 @@ x-airflow-common:
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
     # yamllint disable rule:line-length
@@ -32,11 +32,21 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+    # Auto-creates Airflow Connection "spark_bdm" pointing at the standalone Spark master.
+    # Required by dags/silver/trusted_zone_dag.py and dags/gold/exploitation_zone_dag.py
+    # (both use SparkSubmitOperator with conn_id="spark_bdm").
+    AIRFLOW_CONN_SPARK_BDM: 'spark://spark-master:7077'
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
     - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - ${AIRFLOW_PROJ_DIR:-.}/trusted-zone:/opt/spark/work-dir/trusted-zone
+    - ${AIRFLOW_PROJ_DIR:-.}/exploitation-zone:/opt/spark/work-dir/exploitation-zone
+    - ${AIRFLOW_PROJ_DIR:-.}/spark_client:/opt/spark/work-dir/spark_client
+  networks:
+    - bdm-network
+    - default
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -147,12 +157,15 @@ services:
       - "8890:8888"
     volumes:
       - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      # Mounted so `docker compose exec spark-master spark-submit ...` can find
+      # the streaming app sources when invoked manually.
+      - ./spark_streaming:/opt/spark/work-dir/spark_streaming
     networks:
       - bdm-network
     depends_on:
       - seaweedfs
     restart: unless-stopped
- 
+
   spark-worker:
     build:
       context: .
@@ -170,10 +183,54 @@ services:
       - ./trusted-zone:/opt/spark/work-dir/trusted-zone
       - ./exploitation-zone:/opt/spark/work-dir/exploitation-zone
       - ./spark_client:/opt/spark/work-dir/spark_client
+      # Required by --deploy-mode cluster: the driver lands on the worker
+      # and needs the streaming module on its local filesystem.
+      - ./spark_streaming:/opt/spark/work-dir/spark_streaming
     networks:
       - bdm-network
     depends_on:
       - spark-master
+    restart: unless-stopped
+
+  # Long-running Spark Structured Streaming job that consumes every Kafka
+  # topic produced upstream and appends Parquet under
+  # s3a://landing-zone/streaming/{topic}/. Opt-in via the `streaming` profile:
+  #
+  #     docker compose --profile streaming up -d spark-streaming
+  #
+  # The container reuses the bdm-spark image so the S3A and AWS SDK jars are
+  # already baked in. The Kafka jar is pulled at runtime via --packages.
+  spark-streaming:
+    image: bdm-spark:3.3.4
+    container_name: spark-streaming
+    profiles:
+      - streaming
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - S3A_ENDPOINT=http://seaweedfs:8333
+      - S3A_ACCESS_KEY=admin
+      - S3A_SECRET_KEY=admin
+      - LANDING_BUCKET=landing-zone
+    volumes:
+      - ./spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./spark_streaming:/opt/spark/work-dir/spark_streaming
+    working_dir: /opt/spark/work-dir
+    command: >
+      /opt/spark/bin/spark-submit
+      --master spark://spark-master:7077
+      --deploy-mode client
+      --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1
+      --conf spark.jars.ivy=/tmp/.ivy2
+      --conf spark.driver.memory=1g
+      --conf spark.executor.memory=1g
+      /opt/spark/work-dir/spark_streaming/streaming_processor.py
+    networks:
+      - bdm-network
+    depends_on:
+      - spark-master
+      - spark-worker
+      - kafka
+      - seaweedfs
     restart: unless-stopped
 
   # ----------------------------------------- CHROMA + ML / DASHBOARD ----------------------------------------- #
