@@ -277,15 +277,24 @@ services:
       # Parquet de tweets RSS/Nitter en exploitation (misma jerarquía que en trusted)
       - TRANSIT_POSTS_PREFIX=transit_posts/
       - KAGGLE_ML_PREFIX=
+      # Hot path: reusa el contenedor Redis de Airflow (db=1 para aislarlo del Celery broker).
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - PARKING_TOPIC=parking-lot-events
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=1
     volumes:
       - ./presentation-layer:/app
       - ./trusted-zone:/trusted-zone:ro
       - ./exploitation-zone:/exploitation-zone:ro
     networks:
       - bdm-network
+      - default
     depends_on:
       - chromadb
       - seaweedfs
+      - kafka
+      - redis
     restart: unless-stopped
 
   # ----------------------------------------- AIRFLOW ----------------------------------------- #

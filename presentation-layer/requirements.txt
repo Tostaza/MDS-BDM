@@ -1,5 +1,6 @@
 # Dashboard + pipelines ML (ejecución dentro del contenedor dashboard)
-streamlit>=1.31.0
+# streamlit>=1.33 para `st.fragment(run_every=...)` (hot path real-time widget).
+streamlit>=1.33.0
 altair>=5.0.0
 chromadb==0.5.5
 sentence-transformers==2.7.0
@@ -10,3 +11,6 @@ Pillow>=10.0.0
 pandas>=2.0.0
 numpy>=1.26.0
 scikit-learn>=1.3.0
+# Hot path: consumidor Kafka en hilo + escritura a la Redis ya existente (db=1).
+kafka-python-ng>=2.2.0
+redis>=5.0.0

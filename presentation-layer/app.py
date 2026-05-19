@@ -10,6 +10,7 @@ Uso (Docker): http://localhost:8501 tras `docker compose up dashboard`.
 from __future__ import annotations
 
 import os
+import time
 
 import chromadb
 import pandas as pd
@@ -24,6 +25,7 @@ from data_access import (
     load_parquet_prefix,
     traffic_cameras_gallery_prefix,
 )
+from hot_path import read_parking_counters, start_parking_consumer
 
 
 def _env(name: str, default: str) -> str:
@@ -377,6 +379,37 @@ def section_explorer(bucket: str) -> None:
             render_parquet_analysis(df, "explorer")
 
 
+def section_realtime_parking() -> None:
+    """Live parking-lot counter served by the Kafka → Redis hot path."""
+    start_parking_consumer()
+
+    @st.fragment(run_every="5s")
+    def _live_widget() -> None:
+        free, total, ts = read_parking_counters()
+        occupied = max(0, total - free)
+        cols = st.columns([1, 1, 1, 2])
+        with cols[0]:
+            st.metric("Plazas libres", f"{free:,}")
+        with cols[1]:
+            st.metric("Plazas ocupadas", f"{occupied:,}")
+        with cols[2]:
+            st.metric("Sensores activos", f"{total:,}")
+        with cols[3]:
+            if ts:
+                age = max(0, int(time.time()) - ts)
+                st.caption(
+                    f"Actualizado hace **{age} s** · fuente: Kafka `parking-lot-events` → "
+                    f"Redis `db=1` · refresco cada 5 s."
+                )
+            else:
+                st.caption(
+                    "Esperando el primer evento de Kafka… "
+                    "(arranca `parking-sensor` si no ves datos en ~30 s)."
+                )
+
+    _live_widget()
+
+
 def section_chroma() -> None:
     st.caption(f"Cliente HTTP → `{_env('CHROMA_HOST', 'chromadb')}:{_env('CHROMA_PORT', '8000')}`")
     try:
@@ -422,6 +455,15 @@ def main() -> None:
     pfx_tomtom = _env("TOMTOM_ML_PREFIX", "TOMTOM/")
     pfx_bcn_ml = _env("BCN_ML_READY_PREFIX", "ajuntament_bcn/ml_ready_accidents_traffic/")
     pfx_sct = _env("SCT_TRAFFIC_INCIDENTS_PREFIX", "sct/traffic_incidents/")
+
+    _section_title(
+        "Plazas de parking en tiempo real (hot path)",
+        "Contador en vivo desde Kafka, agregado en Redis (db=1) y refrescado cada 5 s. "
+        "No depende de Spark ni de Parquet: el consumidor corre dentro del propio "
+        "contenedor `dashboard` como hilo en background.",
+    )
+    with st.container(border=True):
+        section_realtime_parking()
 
     _section_title(
         "Panel principal (datos ya servidos desde el bucket)",
