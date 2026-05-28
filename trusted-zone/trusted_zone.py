@@ -178,10 +178,17 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
     """
     Recorre `base_uri` y devuelve URIs de carpetas que Spark puede leer con read.parquet(uri).
 
+    Después de la migració a Delta, les carpetes detectades són *taules Delta*: el reader
+    Delta llegirà ``_delta_log`` per resoldre la versió activa, però estructuralment una
+    taula Delta no particionada té els ``.parquet`` actius a l'arrel (al costat de
+    ``_delta_log/``), per la qual cosa l'heurística "hi ha parquet aquí → arrel del dataset"
+    segueix sent vàlida sense canvis.
+
     Reglas:
     - Si en esta carpeta hay ficheros *.parquet, esa carpeta es una raíz (dataset).
-    - Si solo hay subcarpetas y todas parecen particiones Hive (nombre con '='), la raíz es esta carpeta.
-    - Si no, se sigue bajando en cada subcarpeta y se concatenan los resultados.
+    - Si solo hay subcarpetas y todas parecen particiones Hive (nombre con '=') ignorant
+      ``_delta_log``, la raíz es esta carpeta (Delta particionat).
+    - Si no, se sigue bajando en cada subcarpeta (saltant ``_delta_log``) y se concatenan los resultados.
 
     Limitación: si mezclas carpetas `año=2024` con otra carpeta que no es partición al mismo nivel,
     se intentará tratar cada rama por separado (puede no coincidir con un único read.parquet del padre).
@@ -208,7 +215,12 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
         if not fs.exists(p):
             return []
         statuses = fs.listStatus(p)
-        dirs = [s for s in statuses if s.isDirectory()]
+        # ``_delta_log`` és el log transaccional Delta. No conté dades i no s'ha de tractar
+        # com a partició ni recórrer-hi: el reader Delta ja el llegeix per la seva banda.
+        dirs = [
+            s for s in statuses
+            if s.isDirectory() and s.getPath().getName() != "_delta_log"
+        ]
         files = [
             s
             for s in statuses
@@ -242,7 +254,7 @@ def main() -> None:
         1. **Fase 0 (boto3, sin Spark):** imágenes ``traffic_cameras`` de persistent a trusted
            (ver ``traffic_cameras_media``). Así no depende de que Spark/Parquet fallen después.
         2. **Spark:** descubrimiento de carpetas Parquet, pipelines Twitter/SCT/AEMET/accidents GU y
-           el resto con ``Cleaner.clean_parquet``.
+           el resto con ``Cleaner.clean_delta``.
 
     Variables principales: ver docstring del módulo al inicio de este archivo.
     """
@@ -306,21 +318,21 @@ def main() -> None:
                 print(f"  → {root}  ==>  {out}")
                 rel_lower = rel.lower()
                 if rel_lower.startswith("ajuntament_bcn/accidents_gu"):
-                    df_ag = cleaner.read_parquet(root.rstrip("/") + "/")
+                    df_ag = cleaner.read_delta(root.rstrip("/") + "/")
                     opts_ag = clean_options_for_accidents_gu(df_ag)
                     cleaned_ag = cleaner.clean(df_ag, options=opts_ag)
-                    cleaner.write_parquet(cleaned_ag, out.rstrip("/") + "/", mode="overwrite")
+                    cleaner.write_delta(cleaned_ag, out.rstrip("/") + "/", mode="overwrite")
                 else:
-                    cleaner.clean_parquet(
+                    cleaner.clean_delta(
                         input_path=root,
                         output_path=out,
                         options=options,
                         write_mode="overwrite",
                     )
 
-            print("Limpieza y escritura Parquet en trusted-zone completadas.")
+            print("Limpieza y escritura Delta en trusted-zone completadas.")
     except Exception as ex:
-        print(f"ERROR en pipeline Parquet (trusted): {ex}")
+        print(f"ERROR en pipeline Delta (trusted): {ex}")
         traceback.print_exc()
     finally:
         spark_client.close()

@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 """
-Utilidades para la capa "trusted": leer Parquet, aplicar reglas de calidad de datos
-con Spark y volver a escribir Parquet. Pensado para rutas locales o S3A (MinIO, SeaweedFS, etc.).
+Utilidades para la capa "trusted": leer **tablas Delta**, aplicar reglas de calidad de datos
+con Spark y volver a escribir **Delta**. Pensado para rutas locales o S3A (MinIO, SeaweedFS, etc.).
+
+Nota d'arquitectura: el bronze persistent (``persistent-landing-zone``) ja són taules Delta
+escrites des d'Airflow amb ``delta-rs`` (paquet ``deltalake``). Aquí llegim com a Delta perquè
+el log transaccional (``_delta_log``) ens diu quins fitxers Parquet són vigents — si en lloc
+d'això llegíssim com a Parquet pla, podríem absorbir fitxers orfes d'overwrites anteriors i
+acabar amb files duplicades. L'escriptura també és Delta perquè així la capa Gold
+(exploitation) hereta el mateix avantatge: ACID, ``overwrite`` segur, time-travel.
 """
 
 from dataclasses import dataclass
@@ -37,8 +44,8 @@ class CleanOptions:
 
 class Cleaner:
     """
-    Orquesta lectura Parquet → transformaciones de limpieza → escritura Parquet.
-    Recibe la SparkSession ya configurada (master, S3A, etc.); esta clase no crea el cluster.
+    Orquesta lectura Delta → transformaciones de limpieza → escritura Delta.
+    Recibe la SparkSession ya configurada (master, S3A, extensión Delta, etc.); esta clase no crea el cluster.
     """
 
     def __init__(self, spark: SparkSession) -> None:
@@ -50,12 +57,15 @@ class Cleaner:
         """Acceso de solo lectura a la misma SparkSession inyectada en el constructor."""
         return self._spark
 
-    def read_parquet(self, path: str) -> DataFrame:
+    def read_delta(self, path: str) -> DataFrame:
         """
-        Carga un directorio o archivo Parquet en un DataFrame lazy (no ejecuta hasta una acción).
+        Carga una tabla Delta en un DataFrame lazy (no ejecuta hasta una acción).
+
         `path` puede ser ruta local (`file:///...`) o objeto store (`s3a://bucket/prefijo/`).
+        El reader Delta consulta ``_delta_log`` para devolver SOLO los ficheros parquet vigentes
+        (no los orfes de overwrites previos).
         """
-        return self._spark.read.parquet(path)
+        return self._spark.read.format("delta").load(path)
 
     def clean(self, df: DataFrame, options: Optional[CleanOptions] = None) -> DataFrame:
         """
@@ -87,7 +97,7 @@ class Cleaner:
 
         return out
 
-    def write_parquet(
+    def write_delta(
         self,
         df: DataFrame,
         path: str,
@@ -95,16 +105,22 @@ class Cleaner:
         partition_by: Optional[Sequence[str]] = None,
     ) -> None:
         """
-        Materializa el DataFrame en formato Parquet en `path`.
-        - `mode`: típico "overwrite" (reemplaza datos en esa ruta) o "append".
-        - `partition_by`: si indicas columnas, Spark crea subcarpetas por valor (particionado Hive-style).
+        Materializa el DataFrame como **tabla Delta** en `path`.
+
+        - `mode`: típico "overwrite" (reemplaza la versión activa en ``_delta_log``) o "append".
+          Con Delta, "overwrite" es atómico: si el job casca a mitja escriptura el log no es promociona
+          i els lectors continuen veient la versió anterior. Amb Parquet pla, en canvi, podies acabar
+          amb mitja carpeta sobreescrita i mitja antiga.
+        - `partition_by`: subcarpetes Hive-style por valor (igual que en Parquet).
+        - ``overwriteSchema=true``: si l'esquema canvia (p. ex. la pipeline afegeix una columna)
+          Delta refusa l'overwrite per defecte; aquí volem que la trusted-zone es regeneri sense fricció.
         """
-        writer = df.write.mode(mode)
+        writer = df.write.format("delta").mode(mode).option("overwriteSchema", "true")
         if partition_by:
             writer = writer.partitionBy(*partition_by)
-        writer.parquet(path)
+        writer.save(path)
 
-    def clean_parquet(
+    def clean_delta(
         self,
         input_path: str,
         output_path: str,
@@ -113,13 +129,13 @@ class Cleaner:
         partition_by: Optional[Sequence[str]] = None,
     ) -> DataFrame:
         """
-        Atajo: lee desde `input_path`, limpia con `clean()` y escribe en `output_path`.
+        Atajo: lee Delta desde `input_path`, limpia con `clean()` y escribe Delta en `output_path`.
         El `return` es el DataFrame limpio por si quisieramos hacer en algun punto del codigo `.count()`, tests o un paso siguiente.
         La escritura en disco ya se dispara aquí (acción de write).
         """
-        df = self.read_parquet(input_path)
+        df = self.read_delta(input_path)
         cleaned = self.clean(df, options=options)
-        self.write_parquet(cleaned, output_path, mode=write_mode, partition_by=partition_by)
+        self.write_delta(cleaned, output_path, mode=write_mode, partition_by=partition_by)
         return cleaned
 
     @staticmethod

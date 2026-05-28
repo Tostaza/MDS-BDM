@@ -287,7 +287,7 @@ def process_aemet_predictions_parquet(
     """
     Llegeix Parquet AEMET (persistent), aplanat horari a trusted (una fila per hora i dia).
     """
-    df = cleaner.read_parquet(input_root_uri.rstrip("/") + "/")
+    df = cleaner.read_delta(input_root_uri.rstrip("/") + "/")
     df = flatten_aemet_hourly_df(df)
     dup_subset = (
         "aemet_municipio_id",
@@ -303,7 +303,7 @@ def process_aemet_predictions_parquet(
         duplicate_subset=dup_subset if not missing else None,
     )
     cleaned = cleaner.clean(df, options=opts)
-    cleaner.write_parquet(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
+    cleaner.write_delta(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
     print(f"  aemet (horari) → {output_root_uri.rstrip('/') + '/'!r}")
 
 
@@ -424,6 +424,12 @@ def process_transit_posts_union(
         print("  transit_posts: cap arrel a processar.")
         return False
 
+    # Excepció a la regla "tot Delta a trusted": llegim els bronze posts com a Parquet pla.
+    # Motiu: hi ha *milers* de taules Delta (una per tweet) i el reader Delta no accepta
+    # múltiples paths en una sola crida; iterar-les una per una i fer unionByName seria
+    # ordres de magnitud més lent. Com que cada taula bronze de tweet és write-once
+    # (no hi ha overwrites posteriors), no hi ha fitxers orfes → llegir-les com a parquet
+    # és semànticament equivalent. L'escriptura de la sortida sí que és Delta.
     try:
         df = spark.read.option("mergeSchema", "true").parquet(*paths)
     except AnalysisException as ex:
@@ -449,7 +455,7 @@ def process_transit_posts_union(
     )
     cleaned = cleaner.clean(df, options=opts)
     out = trusted_output_uri.rstrip("/") + "/"
-    cleaner.write_parquet(cleaned, out, mode="overwrite")
+    cleaner.write_delta(cleaned, out, mode="overwrite")
     try:
         n = cleaned.count()
     except Exception:
@@ -546,7 +552,7 @@ def process_sct_traffic_incidents_parquet(
     Lee Parquet/Delta de incidents SCT desde ``input_root_uri``, aplica ``enrich_sct_xml_content_df``,
     ``Cleaner.clean`` con deduplicado por ``file_name`` y escribe en ``output_root_uri``.
     """
-    df = cleaner.read_parquet(input_root_uri.rstrip("/") + "/")
+    df = cleaner.read_delta(input_root_uri.rstrip("/") + "/")
     df = enrich_sct_xml_content_df(df)   # ← ahora parsea y explota el XML
 
     # Deduplicación por identificador, basicament es eliminar auqells que tinguin identificador igual.
@@ -558,7 +564,7 @@ def process_sct_traffic_incidents_parquet(
         duplicate_subset=dup_subset,
     )
     cleaned = cleaner.clean(df, options=opts)
-    cleaner.write_parquet(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
+    cleaner.write_delta(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
     print(f"  sct/traffic_incidents → {output_root_uri.rstrip('/') + '/'!r}")
 
 
