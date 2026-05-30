@@ -409,31 +409,29 @@ def _flatten_transit_rss_df(df: DataFrame) -> DataFrame:
     return out
 
 
-def process_transit_posts_union(
+def process_transit_posts(
     spark: SparkSession,
     cleaner: Cleaner,
-    twitter_roots: Sequence[str],
+    twitter_root: str,
     trusted_output_uri: str,
 ) -> bool:
     """
-    Llegeix totes les carpetes Parquet (p. ex. una taula Delta per post), fusiona amb
-    mergeSchema, aplica flatten + Cleaner i escriu un sol dataset a ``trusted_output_uri``.
+    Llegeix la taula Delta centralitzada de transit_posts (un row per tweet) des de bronze,
+    aplica flatten RSS + Cleaner i escriu Delta a ``trusted_output_uri``.
+
+    Abans aquesta funció es deia ``_union`` perquè rebia una *llista* d'arrels Parquet
+    (una taula Delta per tweet) i feia ``parquet(*paths) + mergeSchema``. Aquell disseny
+    venia del fet que bronze creava una taula Delta per fitxer landing. Ara que bronze
+    centralitza tot a una sola taula, no cal fusió i podem fer lectura Delta nativa.
     """
-    paths = [r.rstrip("/") for r in twitter_roots if (r or "").strip()]
-    if not paths:
+    if not (twitter_root or "").strip():
         print("  transit_posts: cap arrel a processar.")
         return False
 
-    # Excepció a la regla "tot Delta a trusted": llegim els bronze posts com a Parquet pla.
-    # Motiu: hi ha *milers* de taules Delta (una per tweet) i el reader Delta no accepta
-    # múltiples paths en una sola crida; iterar-les una per una i fer unionByName seria
-    # ordres de magnitud més lent. Com que cada taula bronze de tweet és write-once
-    # (no hi ha overwrites posteriors), no hi ha fitxers orfes → llegir-les com a parquet
-    # és semànticament equivalent. L'escriptura de la sortida sí que és Delta.
     try:
-        df = spark.read.option("mergeSchema", "true").parquet(*paths)
+        df = cleaner.read_delta(twitter_root.rstrip("/") + "/")
     except AnalysisException as ex:
-        print(f"  transit_posts: error llegint Parquet: {ex}")
+        print(f"  transit_posts: error llegint Delta: {ex}")
         return False
     except Exception as ex:
         print(f"  transit_posts: error inesperat: {ex}")
@@ -460,7 +458,7 @@ def process_transit_posts_union(
         n = cleaned.count()
     except Exception:
         n = -1
-    print(f"  transit_posts → dataset unificat a {out!r} (files comptades: {n}).")
+    print(f"  transit_posts → {out!r} (files comptades: {n}).")
     return True
 
 

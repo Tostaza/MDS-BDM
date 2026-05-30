@@ -64,7 +64,7 @@ from trusted_pipelines import (  # noqa: E402
     partition_roots_by_pipeline,
     process_aemet_predictions_parquet,
     process_sct_traffic_incidents_parquet,
-    process_transit_posts_union,
+    process_transit_posts,
 )
 from traffic_cameras_media import process_traffic_cameras_persistent_to_trusted  # noqa: E402
 
@@ -296,9 +296,19 @@ def main() -> None:
             )
 
             if transit_roots:
+                # Després de centralitzar bronze a una sola taula Delta per font, esperem 1 root.
+                # Si en arriben més (taules orfes de l'era per-fitxer), avisem i agafem la primera —
+                # que serà la centralitzada al prefix arrel.
+                if len(transit_roots) > 1:
+                    print(
+                        f"  AVÍS: trobades {len(transit_roots)} arrels transit_posts; "
+                        f"s'utilitzarà {transit_roots[0]!r}. Les altres són probablement "
+                        f"taules orfes de l'època una-taula-per-tweet (vegeu el report de "
+                        f"centralització bronze)."
+                    )
                 out_transit = trusted_target_uri(trusted_base, "transit_posts")
-                print(f"  → [pipeline transit_posts] {len(transit_roots)} carpetas  ==>  {out_transit}")
-                process_transit_posts_union(spark, cleaner, transit_roots, out_transit)
+                print(f"  → [pipeline transit_posts] {transit_roots[0]}  ==>  {out_transit}")
+                process_transit_posts(spark, cleaner, transit_roots[0], out_transit)
 
             for root in sct_roots:
                 rel = relative_path_under_base(lb, root.rstrip("/"))
