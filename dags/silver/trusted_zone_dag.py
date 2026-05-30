@@ -40,6 +40,10 @@ def trusted_zone_pipeline():
         name="trusted-zone-airflow",
         deploy_mode="client",
         driver_memory="1g",
+        # Delta must be on the classpath before the JVM starts. Setting
+        # spark.jars.packages inside the app (SparkClient) is too late under
+        # spark-submit, so resolve it here via Ivy (mirrors spark-defaults.conf).
+        packages="io.delta:delta-core_2.12:2.4.0",
         execution_timeout=timedelta(minutes=60),
         verbose=False,
     )
