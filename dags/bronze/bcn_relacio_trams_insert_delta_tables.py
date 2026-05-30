@@ -48,8 +48,8 @@ def bcn_relacio_trams_temporal_to_persistent_pipeline():
         # `idTram` és la clau natural del catàleg de trams i el join key amb trams_congestion.
         # El predicat anterior amb (latitud, longitud) era fràgil (floats com a clau) i s'allunyava
         # del model conceptual: un tram es referencia per id, no per coordenades.
-        merge_key_cols = ["idTram"]
-        predicate = "target.idTram = source.idTram"
+        merge_key_cols = ["Tram", "Tram_Components"]
+        predicate = "target.Tram = source.Tram and target.Tram_Components = source.Tram_Components"
 
         s3_client = Seaweedfs()
         s3_client.connect()
