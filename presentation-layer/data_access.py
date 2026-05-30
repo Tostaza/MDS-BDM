@@ -115,3 +115,16 @@ def load_parquet_prefix(bucket: str, prefix: str) -> pd.DataFrame:
             return pd.read_parquet(base.rstrip("/"), storage_options=so)
         except Exception:
             return pd.DataFrame()
+
+
+def load_trams_map(bucket: str, prefix: str = "ajuntament_bcn/trams_map/") -> pd.DataFrame:
+    """
+    Lee la tabla map-ready de trams (una fila por tram: `id_tram`, `descripcio`, `path`,
+    `n_punts`, `estatActual`, …) que materializa ``exploitation-zone`` con
+    ``materialize_trams_map``.
+
+    Es un envoltorio fino sobre :func:`load_parquet_prefix`; existe como función propia
+    para dejar explícito el contrato que consume el widget de mapa y porque la columna
+    ``path`` vuelve como lista de ``[lon, lat]`` (deck.gl `PathLayer`), no como escalar.
+    """
+    return load_parquet_prefix(bucket, prefix)

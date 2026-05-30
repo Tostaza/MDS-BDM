@@ -23,9 +23,11 @@ from data_access import (
     list_traffic_camera_gallery_objects,
     list_traffic_camera_gallery_sites,
     load_parquet_prefix,
+    load_trams_map,
     traffic_cameras_gallery_prefix,
 )
 from hot_path import read_parking_counters, start_parking_consumer
+from map_view import render_trams_map
 
 
 def _env(name: str, default: str) -> str:
@@ -230,6 +232,11 @@ def chroma_client():
 @st.cache_data(ttl=300, show_spinner="Leyendo Parquet desde S3…")
 def cached_load_df(bucket: str, prefix: str) -> pd.DataFrame:
     return load_parquet_prefix(bucket, prefix)
+
+
+@st.cache_data(ttl=300, show_spinner="Cargando mapa de trams desde S3…")
+def cached_load_trams_map(bucket: str, prefix: str) -> pd.DataFrame:
+    return load_trams_map(bucket, prefix)
 
 
 def section_transit_twitter(bucket: str, prefix: str) -> None:
@@ -440,6 +447,7 @@ def main() -> None:
     pfx_hf = _env("HF_RAIN_ML_PREFIX", "huggingface/kanishka089/")
     pfx_kaggle = _env("KAGGLE_ML_PREFIX", "")
     pfx_transit = _env("TRANSIT_POSTS_PREFIX", "transit_posts/")
+    pfx_trams_map = _env("TRAMS_MAP_PREFIX", "ajuntament_bcn/trams_map/")
     data_prefix = _env("DATA_PREFIX", "")
 
     st.markdown(
@@ -464,6 +472,15 @@ def main() -> None:
     )
     with st.container(border=True):
         section_realtime_parking()
+
+    _section_title(
+        "Mapa de congestió de trams",
+        "Cada tram de Barcelona pintado como una línea coloreada por su último nivel de "
+        "congestió (verd fluid → vermell tallat). Geometría + snapshot materializados en "
+        "`exploitation-zone` (`trams_map`); aquí solo se renderiza con pydeck.",
+    )
+    with st.container(border=True):
+        render_trams_map(cached_load_trams_map(exploitation_bucket, pfx_trams_map))
 
     _section_title(
         "Panel principal (datos ya servidos desde el bucket)",

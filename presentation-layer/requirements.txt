@@ -1,6 +1,8 @@
 # Dashboard + pipelines ML (ejecución dentro del contenedor dashboard)
 # streamlit>=1.33 para `st.fragment(run_every=...)` (hot path real-time widget).
 streamlit>=1.33.0
+# pydeck ya es dependencia de streamlit; lo fijamos explícito para el mapa de trams (PathLayer).
+pydeck>=0.8.0
 altair>=5.0.0
 chromadb==0.5.5
 sentence-transformers==2.7.0
