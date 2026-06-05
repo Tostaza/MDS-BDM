@@ -16,25 +16,25 @@ class Client(ABC):
         pass
     
     @abstractmethod
-    def upload_object(self, bucket, obj_bytes, key):
+    def upload_object(self, bucket, key, obj_bytes):
         pass
 
     @abstractmethod
-    def load_doc(bucket, json_bytes, key):
+    def load_doc(self, bucket, df, key):
         pass
-    
+
     @abstractmethod
-    def load_xml(bucket, json_bytes, key):
+    def load_xml(self, bucket, json_bytes, key):
         pass
-    
+
     @abstractmethod
-    def load_json(bucket, json_bytes, key):
+    def load_json(self, bucket, doc, key):
         pass
-    
+
     @abstractmethod
-    def download(bucket, key, file_path):
+    def download(self, bucket, key, file_path):
         pass
-    
+
     @abstractmethod
     def create_bucket(self, name_bucket):
         pass
@@ -42,15 +42,7 @@ class Client(ABC):
     @abstractmethod
     def download_all(self, bucket: str):
         pass
-    
-    @abstractmethod
-    def load_doc(self, bucket, df, key):
-        pass
-    
-    @abstractmethod
-    def load_real_time(self, bucket, doc, key):
-        pass
-    
+
     @abstractmethod
     def load_real_time(self, bucket, doc, key):
         pass
