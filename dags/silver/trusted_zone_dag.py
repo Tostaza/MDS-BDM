@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from airflow.decorators import dag
+from airflow.operators.bash import BashOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
 
@@ -20,6 +21,7 @@ default_args = {
 # Resolved on the driver host (= spark-worker in cluster mode), where
 # docker-compose mounts ./trusted-zone -> /opt/spark/work-dir/trusted-zone.
 TRUSTED_APPLICATION = "/opt/spark/work-dir/trusted-zone/trusted_zone.py"
+CAMERAS_SCRIPT = "/opt/spark/work-dir/trusted-zone/run_cameras_images.py"
 
 
 @dag(
@@ -33,6 +35,13 @@ TRUSTED_APPLICATION = "/opt/spark/work-dir/trusted-zone/trusted_zone.py"
     tags=["silver", "trusted", "spark", "medallion"],
 )
 def trusted_zone_pipeline():
+    # Copia imatges GIF de cameras (boto3, sense Spark)
+    run_cameras = BashOperator(
+        task_id="traffic_cameras_images_to_trusted",
+        bash_command=f"python {CAMERAS_SCRIPT}",
+        append_env=True,
+    )
+
     run_trusted_zone = SparkSubmitOperator(
         task_id="spark_submit_trusted_zone",
         conn_id="spark_bdm",
@@ -40,9 +49,6 @@ def trusted_zone_pipeline():
         name="trusted-zone-airflow",
         deploy_mode="client",
         driver_memory="1g",
-        # Delta must be on the classpath before the JVM starts. Setting
-        # spark.jars.packages inside the app (SparkClient) is too late under
-        # spark-submit, so resolve it here via Ivy (mirrors spark-defaults.conf).
         packages="io.delta:delta-core_2.12:2.4.0",
         execution_timeout=timedelta(minutes=60),
         verbose=False,
@@ -55,7 +61,7 @@ def trusted_zone_pipeline():
         reset_dag_run=True,
     )
 
-    run_trusted_zone >> trigger_exploitation
+    run_cameras >> run_trusted_zone >> trigger_exploitation
 
 
 trusted_zone_pipeline()

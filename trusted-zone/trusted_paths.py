@@ -1,27 +1,26 @@
 """
-Utilidades de **rutas URI** entre landing, trusted y sufijos relativos.
+Utilitats de rutes URI entre landing --> trusted i sufixos relatius.
 
-Este módulo evita imports circulares: ``trusted_zone`` y ``trusted_pipelines`` comparten
-las mismas funciones para calcular rutas ``s3a://`` y el sufijo relativo entre dos URIs.
+Aquest mòdul evita imports circulars: trusted_zone i trusted_pipelines comparteixen
+les mateixes funcions per calcular rutes s3a:// i el sufix relatiu entre dues URIs.
 
-Funciones:
-    ``relative_path_under_base``: parte de una raíz de dataset respecto a la base del bucket.
-    ``trusted_target_uri``: compone la URI de escritura en trusted-zone dado un sufijo relativo.
+Funcions:
+    relative_path_under_base: extreu la part de la ruta del dataset respecte a la base del bucket.
+    trusted_target_uri: compon la URI d'escriptura a la trusted-zone donat un sufix relatiu.
 """
 
 from __future__ import annotations
 
-
 def relative_path_under_base(base_uri: str, root_uri: str) -> str:
     """
-    Devuelve el segmento de ruta de ``root_uri`` relativo a ``base_uri`` (sin barras extremas).
+    Retorna el segment de ruta de root_uri relatiu a base_uri (sense barres als extrems).
 
-    Ej.: base ``s3a://bucket/prefix``, root ``s3a://bucket/prefix/a/b/`` → ``a/b``.
+    Exemple: base s3a://bucket/prefix, root s3a://bucket/prefix/a/b/ -> a/b.
     """
     b = base_uri.rstrip("/")
     r = root_uri.rstrip("/")
     if not r.startswith(b):
-        raise ValueError(f"La raíz {root_uri!r} no cuelga de la base {base_uri!r}")
+        raise ValueError(f"L arrel {root_uri!r} no penja de la base {base_uri!r}")
     if r == b:
         return ""
     return r[len(b) + 1 :]
@@ -29,9 +28,9 @@ def relative_path_under_base(base_uri: str, root_uri: str) -> str:
 
 def trusted_target_uri(trusted_base_uri: str, relative: str) -> str:
     """
-    Construye la URI ``s3a://`` de destino en trusted a partir de la base y un sufijo relativo.
+    Construeix la URI s3a:// de destí a trusted a partir de la base i un sufix relatiu.
 
-    Si ``relative`` está vacío, devuelve la base con barra final.
+    Si relative és buit, retorna la base amb barra final.
     """
     t = trusted_base_uri.rstrip("/")
     if relative:
