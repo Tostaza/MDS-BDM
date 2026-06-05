@@ -45,8 +45,7 @@ async def main():
     parser.add_argument(
         '-n', '--number-of-devices',
         type=int,
-        nargs=1, 
-        default=10000, 
+        default=10000,
     )
 
     parser.add_argument(
@@ -57,10 +56,9 @@ async def main():
     )
 
     parser.add_argument(
-        '-t', '--topic', 
-        type=str, 
-        nargs=1,
-        default='parking-lot-events', 
+        '-t', '--topic',
+        type=str,
+        default='parking-lot-events',
     )
 
     args = parser.parse_args()
