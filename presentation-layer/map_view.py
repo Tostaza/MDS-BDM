@@ -108,6 +108,8 @@ def render_trams_map(df: pd.DataFrame) -> None:
         "(`materialize_trams_map`)."
     )
 
+    if df is None:
+        return
     data = prepare_map_dataframe(df)
     if data.empty:
         st.info(
