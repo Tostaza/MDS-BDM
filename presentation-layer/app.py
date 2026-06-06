@@ -8,7 +8,12 @@ import os
 
 import streamlit as st
 
-from data_access import load_trams_map
+from data_access import (
+    get_s3_object_bytes,
+    list_traffic_camera_gallery_objects,
+    list_traffic_camera_gallery_sites,
+    load_trams_map,
+)
 from hot_path import read_parking_counters, start_parking_consumer
 from map_view import render_trams_map
 
@@ -150,6 +155,49 @@ def cached_load_trams_map(bucket: str, prefix: str):
         return None
 
 
+def _fmt_camera_site(site_key: str) -> str:
+    import re
+    s = site_key.strip()
+    s = re.sub(r"_-_", " — ", s)
+    s = s.replace("_", " ")
+    s = re.sub(r"\b([a-z]{1,3})-(\d+)\b", lambda m: f"{m.group(1).upper()}-{m.group(2)}", s)
+    return s.strip().title()
+
+
+def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
+    sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
+    if not sites:
+        st.info("Sense imatges de càmeres disponibles.")
+        return
+
+    labels = {s: _fmt_camera_site(s) for s in sites}
+
+    selected = st.selectbox(
+        "Càmera",
+        options=sites,
+        format_func=lambda s: labels[s],
+        label_visibility="collapsed",
+    )
+
+    items = list_traffic_camera_gallery_objects(bucket, data_prefix, selected)
+    if not items:
+        st.warning("Sense imatges per aquesta càmera.")
+        return
+
+    if len(items) > 1:
+        names = [n for _, n in items]
+        choice_name = st.select_slider("Captura", options=names, label_visibility="collapsed")
+        key = next(k for k, n in items if n == choice_name)
+    else:
+        key, _ = items[0]
+
+    try:
+        body = get_s3_object_bytes(bucket, key)
+        st.image(body, use_container_width=True)
+    except Exception as ex:
+        st.error(f"No s'ha pogut carregar la imatge: {ex}")
+
+
 def section_realtime_parking() -> None:
     start_parking_consumer()
 
@@ -195,6 +243,10 @@ def main() -> None:
     )
     with st.container(border=True):
         render_trams_map(cached_load_trams_map(exploitation_bucket, pfx_trams_map))
+
+    _section_title("Càmeres de trànsit")
+    with st.container(border=True):
+        section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
 
     st.markdown(
         """
