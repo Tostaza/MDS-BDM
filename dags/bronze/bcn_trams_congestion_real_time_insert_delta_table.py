@@ -68,9 +68,24 @@ def bcn_trams_congestion_real_time_temporal_to_persistent():
 
         df_new = pd.DataFrame(response)
 
+        # Drop rows from malformed CSVs (column names like '1#20260605...' mean wrong sep/header)
+        _expected = ['idTram', 'data', 'estatActual', 'estatPrevist']
+        df_new = df_new.reindex(columns=_expected).dropna(subset=['idTram', 'data'])
+        if df_new.empty:
+            print("trams_congestion real_time: no valid rows — re-run ingestion DAG first.")
+            return
+
         s3_client.create_bucket(TRUSTED_BUCKET)
-        
-        delta_lake.connect_load_specific_one(df_new, persistent_path, storage_options)
+
+        from deltalake import write_deltalake as _wdl
+        _wdl(
+            persistent_path,
+            df_new,
+            storage_options=storage_options,
+            mode="overwrite",
+            schema_mode="overwrite",
+        )
+        print(f"trams_congestion real_time: {len(df_new)} rows written to {persistent_path}")
 
     process_temporal_to_persistent()
 

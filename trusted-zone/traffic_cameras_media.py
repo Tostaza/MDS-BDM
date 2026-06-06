@@ -151,7 +151,9 @@ def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallbac
     rel = _relative_after_images_raw(source_key)
     if rel is None:
         rel = rel_fallback
-    out = f"{trusted_prefix}{rel}"
+    # Només el nom de fitxer, sense subcarpeta de timestamp
+    filename = rel.split("/")[-1]
+    out = f"{trusted_prefix}{filename}"
     if out.lower().endswith(".pmng"):
         out = out[:-5] + ".png"
     return out

@@ -49,17 +49,32 @@ def ingest_trams_congestion():
         url = result["resources"][0]["url"]
         name = result["resources"][0]["name"]
         response = requests.get(url)
-        
-        df = pd.read_csv(io.StringIO(response.text))
+
+        first_lines = response.text.strip().splitlines()[:5]
+        print(f"[DEBUG rt_trams] url={url!r}")
+        print(f"[DEBUG rt_trams] primeres 5 línies de la resposta:")
+        for i, line in enumerate(first_lines):
+            print(f"  [{i}] {line!r}")
+
+        df = pd.read_csv(
+            io.StringIO(response.text),
+            sep='#',
+            header=None,
+            names=['idTram', 'data', 'estatActual', 'estatPrevist'],
+        )
+        print(f"[DEBUG rt_trams] columnes llegides: {df.columns.tolist()}, shape: {df.shape}")
 
         logical_ts = context["logical_date"].strftime("%Y%m%d_%H%M%S")
         base_name = name.rsplit(".", 1)[0] if "." in name else name
         landing_key = f"ajuntament_bcn/trams_congestion/real_time/{base_name}_{logical_ts}.csv"
         client.upload_dataframe(LANDING_BUCKET, landing_key, df)
 
-        client_kafka = Kafka()
-        client_kafka.connect('trams_congestion')
-        client_kafka.load_to_kafka(df)
+        try:
+            client_kafka = Kafka()
+            client_kafka.connect('trams_congestion')
+            client_kafka.load_to_kafka(df)
+        except Exception as kafka_err:
+            print(f"[WARN rt_trams] Kafka no disponible, s'omet: {kafka_err}")
 
     trigger_temporal_to_persistent_task = TriggerDagRunOperator(
         task_id='trigger_bcn_trams_congestion_real_time_temporal_to_persistent',
