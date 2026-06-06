@@ -1,7 +1,4 @@
-
-
 from datetime import datetime, timedelta
-
 from airflow.decorators import dag
 from airflow.operators.bash import BashOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
@@ -35,13 +32,20 @@ CAMERAS_SCRIPT = "/opt/spark/work-dir/trusted-zone/run_cameras_images.py"
     tags=["silver", "trusted", "spark", "medallion"],
 )
 def trusted_zone_pipeline():
-    # Copia imatges GIF de cameras (boto3, sense Spark)
+    """
+    DAG que permet fer el traspas de Persistent-landing-zone cap a Trusted Zone
+    """
+
+    # Copia imatges GIF de cameras (boto3, sense Spark), es a dir, traspas de les imatges.
     run_cameras = BashOperator(
         task_id="traffic_cameras_images_to_trusted",
         bash_command=f"python {CAMERAS_SCRIPT}",
         append_env=True,
     )
 
+    # Execucio de trapsas de tota la informacio i dades de Persitent-lading-Zone cap a la Trusted Zone.
+    # Aplicant cert cleaning i certa standarització, farem que totes les dades segueixin un esquema tabular.
+    # Sera mes facil despres per poder treballar amb les dades si aqui elaborem per a totes un tabular shcema.
     run_trusted_zone = SparkSubmitOperator(
         task_id="spark_submit_trusted_zone",
         conn_id="spark_bdm",
@@ -54,6 +58,7 @@ def trusted_zone_pipeline():
         verbose=False,
     )
 
+    # TRIGGER de airflow, un cop s'acaba de executar la Trusted-Zone, anem a executar la Exploitation, així generem tota la pipeline.
     trigger_exploitation = TriggerDagRunOperator(
         task_id="trigger_exploitation_zone",
         trigger_dag_id="exploitation_zone_pipeline",
