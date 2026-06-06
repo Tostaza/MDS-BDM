@@ -5,7 +5,6 @@ Dashboard (capa presentació): mapa de congestió de trams + places de parking e
 from __future__ import annotations
 
 import os
-import time
 
 import streamlit as st
 
@@ -118,7 +117,6 @@ def _hero() -> None:
             <p style="margin:0 0 0.35rem 0; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.22em; color:#5eead4; font-weight:600;">BDM · dades en explotació</p>
             <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Panel de mobilitat urbana</h1>
             <p style="margin:0.85rem 0 0 0; font-size:1.05rem; color:#94a3b8; max-width:52rem; line-height:1.6;">
-                Congestió de trams en temps real i ocupació de pàrkings. Dades servides des del bucket <code style="color:#99f6e4;">exploitation-zone</code>.
             </p>
         </div>
         """,
@@ -157,27 +155,15 @@ def section_realtime_parking() -> None:
 
     @st.fragment(run_every="5s")
     def _live_widget() -> None:
-        free, total, ts = read_parking_counters()
+        free, total, _ = read_parking_counters()
         occupied = max(0, total - free)
-        cols = st.columns([1, 1, 1, 2])
+        cols = st.columns(3)
         with cols[0]:
             st.metric("Places lliures", f"{free:,}")
         with cols[1]:
             st.metric("Places ocupades", f"{occupied:,}")
         with cols[2]:
             st.metric("Sensors actius", f"{total:,}")
-        with cols[3]:
-            if ts:
-                age = max(0, int(time.time()) - ts)
-                st.caption(
-                    f"Actualitzat fa **{age} s** · font: Kafka `parking-lot-events` → "
-                    f"Redis `db=1` · refresc cada 5 s."
-                )
-            else:
-                st.caption(
-                    "Esperant el primer event de Kafka… "
-                    "(arrenca `parking-sensor` si no veus dades en ~30 s)."
-                )
 
     _live_widget()
 
