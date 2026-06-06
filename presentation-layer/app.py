@@ -7,9 +7,6 @@ from __future__ import annotations
 import os
 
 import streamlit as st
-
-from analytics import render_parquet_analysis, render_tweet_feed
-from dashboard_views import render_aemet_current_forecast, render_unified_dashboard
 import altair as alt
 import pandas as pd
 
@@ -933,15 +930,6 @@ def main() -> None:
                 )
 
             _iot_widget()
-
-    _section_title(
-        "Predicció meteorològica (AEMET)",
-        "Última predicció horària descarregada de l'API AEMET per a Barcelona i "
-        "Hospitalet. Font: `exploitation-zone/aemet/` · actualització cada 6 h · "
-        "lectura via `load_aemet_predictions_table` (ml_models).",
-    )
-    with st.container(border=True):
-        render_aemet_current_forecast(exploitation_bucket, pfx_aemet)
 
     _section_title("Càmeres de trànsit")
     with st.container(border=True):
