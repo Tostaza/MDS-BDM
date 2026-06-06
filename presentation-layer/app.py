@@ -115,7 +115,7 @@ def _hero() -> None:
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
         ">
             <p style="margin:0 0 0.35rem 0; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.22em; color:#5eead4; font-weight:600;">BDM · dades en explotació</p>
-            <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Panel de mobilitat urbana</h1>
+            <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Panell de mobilitat urbana</h1>
             <p style="margin:0.85rem 0 0 0; font-size:1.05rem; color:#94a3b8; max-width:52rem; line-height:1.6;">
             </p>
         </div>
