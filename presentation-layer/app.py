@@ -612,6 +612,162 @@ def section_accidents_gu(bucket: str) -> None:
         _render_accidents_predictor(bundle)
 
 
+def section_tomtom(bucket: str) -> None:
+    df = load_parquet_prefix(bucket, "TOMTOM/")
+    if df.empty:
+        st.info("Sense dades TomTom. Executa el pipeline d'exploitation.")
+        return
+
+    need = ["point_name", "avg_current_speed_kmh", "avg_free_flow_speed_kmh",
+            "avg_speed_diff_kmh", "avg_congestion_pct", "n_measurements"]
+    df = df[[c for c in need if c in df.columns]].copy()
+    df["avg_congestion_pct"]    = pd.to_numeric(df["avg_congestion_pct"],    errors="coerce").fillna(0)
+    df["avg_current_speed_kmh"] = pd.to_numeric(df["avg_current_speed_kmh"], errors="coerce").fillna(0)
+    df["avg_free_flow_speed_kmh"] = pd.to_numeric(df["avg_free_flow_speed_kmh"], errors="coerce").fillna(0)
+    df = df.sort_values("avg_congestion_pct", ascending=False).reset_index(drop=True)
+
+    # KPIs ràpids
+    n_points    = len(df)
+    avg_cong    = df["avg_congestion_pct"].mean()
+    worst       = df.iloc[0]["point_name"] if n_points > 0 else "—"
+    worst_pct   = df.iloc[0]["avg_congestion_pct"] if n_points > 0 else 0
+    congested   = int((df["avg_congestion_pct"] > 20).sum())
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Punts monitoritzats", f"{n_points}")
+    k2.metric("Congestió mitja",     f"{avg_cong:.1f} %")
+    k3.metric("Punt més congestió",  worst, delta=f"{worst_pct:.0f} %", delta_color="inverse")
+    k4.metric("Punts > 20 % cong.",  f"{congested}")
+
+    st.markdown("<div style='margin-top:0.75rem;'></div>", unsafe_allow_html=True)
+
+    # Capa 1: barra grisa de referència (velocitat lliure)
+    base = alt.Chart(df).encode(
+        y=alt.Y("point_name:N",
+                sort=alt.EncodingSortField(field="avg_congestion_pct", order="descending"),
+                title=None,
+                axis=alt.Axis(labelColor="#e2e8f0", labelFontSize=12, ticks=False)),
+    )
+
+    bar_free = base.mark_bar(color="#1e293b", height=18).encode(
+        x=alt.X("avg_free_flow_speed_kmh:Q", title="Velocitat (km/h)",
+                axis=alt.Axis(labelColor="#64748b", titleColor="#94a3b8", gridColor="#1e293b")),
+    )
+
+    bar_curr = base.mark_bar(height=11, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+        x=alt.X("avg_current_speed_kmh:Q", title=""),
+        color=alt.Color("avg_congestion_pct:Q",
+            scale=alt.Scale(domain=[0, 15, 30, 45],
+                            range=["#2dd4bf", "#a3e635", "#fb923c", "#ef4444"]),
+            title="Congestió (%)",
+            legend=alt.Legend(
+                labelColor="#cbd5e1", titleColor="#e2e8f0",
+                orient="bottom", direction="horizontal",
+                gradientLength=200,
+            ),
+        ),
+        tooltip=[
+            alt.Tooltip("point_name:N",              title="Punt"),
+            alt.Tooltip("avg_current_speed_kmh:Q",   title="Velocitat actual (km/h)",  format=".0f"),
+            alt.Tooltip("avg_free_flow_speed_kmh:Q", title="Velocitat lliure (km/h)",  format=".0f"),
+            alt.Tooltip("avg_speed_diff_kmh:Q",      title="Diferència (km/h)",        format=".0f"),
+            alt.Tooltip("avg_congestion_pct:Q",      title="Congestió (%)",            format=".1f"),
+        ],
+    )
+
+    text_pct = base.mark_text(align="left", dx=6, color="#94a3b8", fontSize=11).encode(
+        x=alt.X("avg_free_flow_speed_kmh:Q"),
+        text=alt.condition(
+            alt.datum.avg_congestion_pct > 0,
+            alt.Text("avg_congestion_pct:Q", format=".0f"),
+            alt.value(""),
+        ),
+    )
+
+    chart = (
+        alt.layer(bar_free, bar_curr, text_pct)
+        .properties(
+            height=max(320, n_points * 28),
+            background="#0f172a",
+            title=alt.TitleParams(
+                "Velocitat actual vs. velocitat lliure per punt TomTom",
+                color="#f1f5f9", fontSize=14,
+                subtitle="Barra fosca = velocitat lliure (referència)  ·  Barra acolorida = velocitat actual  ·  % = congestió",
+                subtitleColor="#64748b", subtitleFontSize=11,
+            ),
+        )
+        .configure_view(strokeOpacity=0)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def section_daily_incidents(bucket: str) -> None:
+    import html as htmllib
+    df = load_parquet_prefix(bucket, "incidents/daily_incidents/")
+    if df.empty:
+        st.info("Sense incidents disponibles. Executa el pipeline d'exploitation.")
+        return
+
+    df = df.copy()
+    if "data_ts" in df.columns:
+        df["data_ts"] = pd.to_datetime(df["data_ts"], errors="coerce")
+        df = df.sort_values("data_ts", ascending=False)
+
+    total = len(df)
+    st.caption(f"{total} incident{'s' if total != 1 else ''} carregat{'s' if total != 1 else ''}")
+
+    for _, row in df.iterrows():
+        titol     = str(row.get("titol", "") or "").strip()
+        desc      = str(row.get("descripcio", "") or "").strip()
+        autor     = str(row.get("autor", "@transit") or "@transit").strip()
+        link      = str(row.get("link", "") or "").strip()
+        data_ts   = row.get("data_ts")
+        carretera = str(row.get("carretera", "") or "").strip()
+
+        text = titol if titol else desc
+        if not text:
+            continue
+
+        data_str   = data_ts.strftime("%d/%m/%Y") if pd.notna(data_ts) else "—"
+        inicial    = htmllib.escape((autor[1] if autor.startswith("@") else autor[0]).upper())
+        autor_esc  = htmllib.escape(autor)
+        text_esc   = htmllib.escape(text[:400]) + ("…" if len(text) > 400 else "")
+
+        road_badge = ""
+        if carretera and carretera not in ("nan", "None", ""):
+            road_badge = (
+                f'<span style="background:rgba(99,102,241,0.25);color:#a5b4fc;padding:0.15rem 0.55rem;'
+                f'border-radius:999px;font-size:0.72rem;font-weight:600;">{htmllib.escape(carretera)}</span>'
+            )
+
+        link_btn = ""
+        if link and link.startswith("http"):
+            link_btn = (
+                f'<a href="{htmllib.escape(link)}" target="_blank" rel="noopener" '
+                f'style="color:#5eead4;font-size:0.82rem;text-decoration:none;margin-top:0.5rem;display:inline-block;">'
+                f'Veure post ↗</a>'
+            )
+
+        st.html(f"""
+        <div style="background:linear-gradient(135deg,rgba(30,41,59,0.75),rgba(15,23,42,0.85));
+                    border:1px solid rgba(148,163,184,0.12);border-left:3px solid rgba(94,234,212,0.5);
+                    border-radius:12px;padding:0.9rem 1.1rem;margin-bottom:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap;">
+                <span style="width:32px;height:32px;border-radius:50%;flex-shrink:0;
+                             background:linear-gradient(145deg,#2dd4bf,#818cf8);
+                             display:inline-flex;align-items:center;justify-content:center;
+                             font-size:0.75rem;font-weight:700;color:#0f172a;">{inicial}</span>
+                <span style="font-weight:700;color:#f1f5f9;font-size:0.92rem;">{autor_esc}</span>
+                <span style="color:#475569;">·</span>
+                <span style="color:#64748b;font-size:0.8rem;">{data_str}</span>
+                {road_badge}
+            </div>
+            <div style="color:#e2e8f0;font-size:0.93rem;line-height:1.55;">{text_esc}</div>
+            {link_btn}
+        </div>
+        """)
+
+
 def section_realtime_parking() -> None:
     start_parking_consumer()
 
@@ -669,6 +825,14 @@ def main() -> None:
     _section_title("Accidents GU — Predicció i estadístiques per zona")
     with st.container(border=True):
         section_accidents_gu(exploitation_bucket)
+
+    _section_title("TomTom — Velocitat i congestió en temps real")
+    with st.container(border=True):
+        section_tomtom(exploitation_bucket)
+
+    _section_title("Incidents de trànsit")
+    with st.container(border=True):
+        section_daily_incidents(exploitation_bucket)
 
     st.markdown(
         """
