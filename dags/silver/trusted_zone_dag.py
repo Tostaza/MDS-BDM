@@ -53,7 +53,7 @@ def trusted_zone_pipeline():
         name="trusted-zone-airflow",
         deploy_mode="client",
         driver_memory="1g",
-        packages="io.delta:delta-core_2.12:2.4.0",
+        packages="io.delta:delta-core_2.12:2.4.0", # Llibreria Delta Lake que spark descarrega de Maven.
         execution_timeout=timedelta(minutes=60),
         verbose=False,
     )
