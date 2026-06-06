@@ -50,7 +50,12 @@ def ingest_trams_congestion():
         name = result["resources"][0]["name"]
         response = requests.get(url)
         
-        df = pd.read_csv(io.StringIO(response.text))
+        df = pd.read_csv(
+            io.StringIO(response.text),
+            sep="#",
+            header=None,
+            names=["idTram", "data", "estatActual", "estatPrevist"],
+        )
 
         logical_ts = context["logical_date"].strftime("%Y%m%d_%H%M%S")
         base_name = name.rsplit(".", 1)[0] if "." in name else name

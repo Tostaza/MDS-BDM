@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 
 from analytics import render_parquet_analysis, render_tweet_feed
-from dashboard_views import render_unified_dashboard
+from dashboard_views import render_aemet_current_forecast, render_unified_dashboard
 from data_access import (
     get_s3_object_bytes,
     list_traffic_camera_gallery_objects,
@@ -27,6 +27,12 @@ from data_access import (
     traffic_cameras_gallery_prefix,
 )
 from hot_path import read_parking_counters, start_parking_consumer
+from warm_path_trams import (
+    get_iot_snapshot,
+    get_trams_snapshot,
+    start_iot_consumer,
+    start_trams_consumer,
+)
 from map_view import render_trams_map
 
 
@@ -475,12 +481,132 @@ def main() -> None:
 
     _section_title(
         "Mapa de congestió de trams",
-        "Cada tram de Barcelona pintado como una línea coloreada por su último nivel de "
-        "congestió (verd fluid → vermell tallat). Geometría + snapshot materializados en "
-        "`exploitation-zone` (`trams_map`); aquí solo se renderiza con pydeck.",
+        "Tres fonts: **warm path · trams** (Kafka directe, refresc 2 min), "
+        "**cold path** (exploitation-zone, refresc horari) i "
+        "**warm path · IoT** (sensors sintètics, refresc 2 min). "
+        "La geometria dels trams és dades de referència estàtiques llegides una "
+        "vegada del cold store.",
     )
     with st.container(border=True):
-        render_trams_map(cached_load_trams_map(exploitation_bucket, pfx_trams_map))
+        tab_warm, tab_cold, tab_iot = st.tabs([
+            "Warm path · trams (Kafka)",
+            "Cold path · trams (batch)",
+            "Warm path · IoT sensors (Kafka)",
+        ])
+
+        with tab_warm:
+            st.caption(
+                "Origen: Kafka `trams_congestion` · congestió en memòria, refresc cada 2 min · "
+                "geometria: `exploitation-zone/ajuntament_bcn/trams_map/` (caché 1 h)."
+            )
+            start_trams_consumer()
+
+            @st.fragment(run_every="2m")
+            def _warm_map_widget() -> None:
+                geometry = cached_load_trams_map(exploitation_bucket, pfx_trams_map)
+                snapshot = get_trams_snapshot()
+
+                if snapshot.empty:
+                    st.info(
+                        "Esperant dades de Kafka (`trams_congestion`). "
+                        "El consumidor fa replay del topic en arrencar; "
+                        "triga uns segons la primera vegada."
+                    )
+                    return
+
+                snap = snapshot.copy()
+                id_col = "id_tram" if "id_tram" in snap.columns else snap.columns[0]
+                snap["id_tram"] = snap[id_col].astype(str)
+
+                if not geometry.empty:
+                    geo = geometry[
+                        [c for c in ["id_tram", "path", "descripcio", "n_punts"]
+                         if c in geometry.columns]
+                    ].copy()
+                    geo["id_tram"] = geo["id_tram"].astype(str)
+                    extra = [c for c in ["estatActual", "estatPrevist", "data"]
+                             if c in snap.columns]
+                    merged = geo.merge(snap[["id_tram"] + extra], on="id_tram", how="left")
+                else:
+                    merged = snap
+
+                render_trams_map(merged)
+
+            _warm_map_widget()
+
+        with tab_cold:
+            st.caption(
+                "Origen: `s3://exploitation-zone/ajuntament_bcn/trams_map/` · "
+                "materialitzat per `exploitation_zone.py` (Spark) · refresc horari."
+            )
+            render_trams_map(cached_load_trams_map(exploitation_bucket, pfx_trams_map))
+
+        with tab_iot:
+            st.caption(
+                "Origen: Kafka `Sensors-IoT` · sensors sintètics de trànsit · refresc cada 2 min."
+            )
+            start_iot_consumer()
+
+            @st.fragment(run_every="2m")
+            def _iot_widget() -> None:
+                import pydeck as pdk
+
+                snap = get_iot_snapshot()
+                if snap.empty:
+                    st.info(
+                        "Sense dades de `Sensors-IoT`. "
+                        "Comprova que el contenidor `sensor-bcn` està en marxa."
+                    )
+                    return
+
+                snap = snap.copy()
+                _iot_colors = {
+                    "low":    [26, 188, 94],
+                    "medium": [245, 200, 40],
+                    "high":   [230, 60, 45],
+                }
+                snap["color"] = snap["congestion_level"].apply(
+                    lambda v: _iot_colors.get(str(v).lower(), [120, 120, 120])
+                )
+
+                st.metric("Sensors actius", len(snap))
+
+                layer = pdk.Layer(
+                    "ScatterplotLayer",
+                    data=snap,
+                    get_position=["lon", "lat"],
+                    get_fill_color="color",
+                    get_radius=150,
+                    pickable=True,
+                    auto_highlight=True,
+                )
+                view = pdk.ViewState(latitude=41.39, longitude=2.17, zoom=12)
+                st.pydeck_chart(
+                    pdk.Deck(
+                        layers=[layer],
+                        initial_view_state=view,
+                        map_style="dark",
+                        tooltip={
+                            "html": (
+                                "<b>{sensor_id}</b><br/>{ubicacion}<br/>"
+                                "Velocitat: {avg_speed_kmh} km/h<br/>"
+                                "Congestió: {congestion_level}"
+                            )
+                        },
+                    ),
+                    use_container_width=True,
+                )
+
+            _iot_widget()
+
+    _section_title(
+        "Predicció meteorològica (AEMET)",
+        "Última predicció horària descarregada de l'API AEMET per a Barcelona i "
+        "Hospitalet. Font: `exploitation-zone/aemet/` · actualització cada 6 h · "
+        "lectura via `load_aemet_predictions_table` (ml_models).",
+    )
+    with st.container(border=True):
+        render_aemet_current_forecast(exploitation_bucket, pfx_aemet)
 
     _section_title(
         "Panel principal (datos ya servidos desde el bucket)",
