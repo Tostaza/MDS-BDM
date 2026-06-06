@@ -8,10 +8,14 @@ import os
 
 import streamlit as st
 
+import altair as alt
+import pandas as pd
+
 from data_access import (
     get_s3_object_bytes,
     list_traffic_camera_gallery_objects,
     list_traffic_camera_gallery_sites,
+    load_parquet_prefix,
     load_trams_map,
 )
 from hot_path import read_parking_counters, start_parking_consumer
@@ -102,6 +106,21 @@ def _inject_dashboard_css() -> None:
         div[data-testid="stSlider"] > div > div > div {
             background: linear-gradient(90deg, #14b8a6, #6366f1) !important;
         }
+        [data-testid="stSlider"] p,
+        [data-testid="stSlider"] span,
+        [data-testid="stSlider"] div[data-testid="stTickBarMin"],
+        [data-testid="stSlider"] div[data-testid="stTickBarMax"] {
+            color: #f1f5f9 !important;
+        }
+        /* Selectbox: valor seleccionat i opcions del desplegable */
+        [data-baseweb="select"] *:not(svg):not(path) { color: #f1f5f9 !important; }
+        [data-baseweb="menu"]   *:not(svg):not(path) { color: #f1f5f9 !important; }
+        [data-baseweb="menu"] { background-color: #0f172a !important; }
+        [role="option"]:hover { background-color: rgba(94,234,212,0.12) !important; }
+        /* Mètriques st.metric */
+        [data-testid="stMetricValue"]  > div { color: #f1f5f9 !important; }
+        [data-testid="stMetricLabel"]  > div { color: #94a3b8 !important; }
+        [data-testid="stMetricDelta"]  > div { color: #5eead4 !important; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -198,6 +217,401 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
         st.error(f"No s'ha pogut carregar la imatge: {ex}")
 
 
+@st.cache_data(ttl=600, show_spinner="Entrenant model AEMET…")
+def _aemet_model(bucket: str):
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+    from sklearn.preprocessing import StandardScaler
+
+    df_train = load_parquet_prefix(bucket, "aemet/ml_rain_train/")
+    df_test = load_parquet_prefix(bucket, "aemet/ml_rain_test/")
+    if df_train.empty or df_test.empty:
+        return None
+
+    target = "ha_plogut"
+    drop_cols = [target, "nombre_municipio", "provincia", "orto", "ocaso"]
+
+    def prep(df):
+        X = df.drop(columns=[c for c in drop_cols if c in df.columns])
+        return X.select_dtypes(include="number"), df[target] if target in df.columns else None
+
+    X_train, y_train = prep(df_train)
+    X_test, y_test = prep(df_test)
+    if y_train is None or y_test is None or X_train.empty:
+        return None
+
+    common = [c for c in X_train.columns if c in X_test.columns]
+    X_train, X_test = X_train[common].fillna(0), X_test[common].fillna(0)
+
+    if y_train.nunique() < 2:
+        return {"error": f"El dataset de train té una sola classe. Torna a executar el pipeline d'exploitation per regenerar les dades amb mostres sintètiques.", "n_train": len(X_train), "n_test": len(X_test)}
+
+    scaler = StandardScaler()
+    model = LogisticRegression(max_iter=500, random_state=42)
+    model.fit(scaler.fit_transform(X_train), y_train)
+    y_pred = model.predict(scaler.transform(X_test))
+
+    return {
+        "accuracy":  accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, zero_division=0),
+        "recall":    recall_score(y_test, y_pred, zero_division=0),
+        "f1":        f1_score(y_test, y_pred, zero_division=0),
+        "cm":        confusion_matrix(y_test, y_pred).tolist(),
+        "n_train":   len(X_train),
+        "n_test":    len(X_test),
+        "model":     model,
+        "scaler":    scaler,
+        "features":  common,
+    }
+
+
+def _render_ml_panel(bundle: dict, labels: list | None = None) -> None:
+    acc, pre, rec, f1 = bundle["accuracy"], bundle["precision"], bundle["recall"], bundle["f1"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Accuracy",  f"{acc:.3f}")
+    c2.metric("Precision", f"{pre:.3f}")
+    c3.metric("Recall",    f"{rec:.3f}")
+    c4.metric("F1",        f"{f1:.3f}")
+
+    cm_raw = bundle["cm"]
+    labels = labels if labels is not None else ["No plou", "Plou"]
+    n = len(cm_raw)
+    rows = [
+        {"Real": labels[i] if i < 2 else str(i), "Predicció": labels[j] if j < 2 else str(j), "n": cm_raw[i][j]}
+        for i in range(n) for j in range(len(cm_raw[i]))
+    ]
+    df_cm = pd.DataFrame(rows)
+
+    base = alt.Chart(df_cm).encode(
+        x=alt.X("Predicció:N", title="Predicció"),
+        y=alt.Y("Real:N", title="Real"),
+    )
+    heatmap = base.mark_rect().encode(
+        color=alt.Color("n:Q", scale=alt.Scale(scheme="tealblues"), legend=None)
+    )
+    text = base.mark_text(color="white", fontSize=20, fontWeight="bold").encode(text="n:Q")
+    chart = (heatmap + text).properties(
+        height=200, background="#0f172a", title="Matriu de confusió"
+    ).configure_axis(
+        labelColor="#94a3b8", titleColor="#cbd5e1"
+    ).configure_title(color="#f1f5f9")
+    st.altair_chart(chart, use_container_width=True)
+    st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres · Logistic Regression")
+
+
+def _render_climate_chart(bucket: str) -> None:
+    df = load_parquet_prefix(bucket, "aemet/climate_by_municipio/")
+    if df.empty:
+        st.info("Sense dades de climate_by_municipio.")
+        return
+
+    municipis = sorted(df["nombre_municipio"].dropna().unique().tolist())
+    selected = st.selectbox("Municipi", municipis, key="aemet_municipio")
+
+    sub = df[df["nombre_municipio"] == selected].copy()
+    sub["data"] = pd.to_datetime(sub["dia_fecha_parsed"], errors="coerce")
+    sub = sub.sort_values("data")
+
+    metric_map = {
+        "avg_temperatura":      "Temperatura (°C)",
+        "avg_sens_termica":     "Sensació tèrmica (°C)",
+        "avg_humedad_relativa": "Humitat relativa (%)",
+    }
+    cols_ok = [c for c in metric_map if c in sub.columns]
+    melt = sub[["data"] + cols_ok].melt(id_vars="data", var_name="clau", value_name="valor")
+    melt["Mètrica"] = melt["clau"].map(metric_map)
+    melt["valor"] = pd.to_numeric(melt["valor"], errors="coerce")
+    melt = melt.dropna(subset=["valor"])
+
+    colors = ["#2dd4bf", "#818cf8", "#fb923c"][: len(cols_ok)]
+    dashes = [[1, 0], [6, 3], [4, 2]][: len(cols_ok)]
+    domain = [metric_map[c] for c in cols_ok]
+
+    chart = (
+        alt.Chart(melt)
+        .mark_line(point=True, strokeWidth=2.5)
+        .encode(
+            x=alt.X("data:T", title="Data"),
+            y=alt.Y("valor:Q", title="Valor"),
+            color=alt.Color(
+                "Mètrica:N",
+                scale=alt.Scale(domain=domain, range=colors),
+                legend=alt.Legend(
+                    labelColor="#cbd5e1",
+                    titleColor="#e2e8f0",
+                    labelFontSize=12,
+                    titleFontSize=12,
+                ),
+            ),
+            strokeDash=alt.StrokeDash(
+                "Mètrica:N",
+                scale=alt.Scale(domain=domain, range=dashes),
+                legend=None,
+            ),
+            tooltip=[alt.Tooltip("data:T", title="Data"), "Mètrica:N", alt.Tooltip("valor:Q", format=".1f")],
+        )
+        .properties(height=300, background="#0f172a", title=f"Evolució climàtica — {selected}")
+        .configure_axis(labelColor="#94a3b8", titleColor="#cbd5e1", gridColor="#1e293b")
+        .configure_title(color="#f1f5f9")
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _render_rain_predictor(bundle: dict) -> None:
+    st.markdown("##### Predictor de pluja")
+    model = bundle.get("model")
+    scaler = bundle.get("scaler")
+    features = bundle.get("features", [])
+    if not model or not features:
+        st.info("Model no disponible.")
+        return
+
+    label_map = {
+        "mes": ("Mes (1–12)", 1, 12, 6),
+        "dia": ("Dia (1–31)", 1, 31, 15),
+        "hora_periodo": ("Hora (0–23)", 0, 23, 12),
+        "temperatura": ("Temperatura (°C)", -5, 45, 20),
+        "sens_termica": ("Sensació tèrmica (°C)", -10, 45, 18),
+        "humedad_relativa": ("Humitat relativa (%)", 0, 100, 65),
+    }
+
+    vals = {}
+    ordered = [f for f in label_map if f in features]
+    cols = st.columns(3)
+    for i, feat in enumerate(ordered):
+        label, mn, mx, default = label_map[feat]
+        vals[feat] = cols[i % 3].slider(label, min_value=mn, max_value=mx, value=default, key=f"pred_{feat}")
+
+    if st.button("Predir", key="rain_predict_btn", use_container_width=True):
+        import numpy as np
+        row = np.array([[vals.get(f, 0) for f in features]])
+        row_scaled = scaler.transform(row)
+        pred = model.predict(row_scaled)[0]
+        proba = model.predict_proba(row_scaled)[0]
+        prob_plou = proba[1] if len(proba) > 1 else proba[0]
+        if pred == 1:
+            st.markdown(
+                f"<div style='text-align:center;padding:1rem;border-radius:12px;"
+                f"background:rgba(99,102,241,0.2);border:1px solid #818cf8;'>"
+                f"<span style='font-size:2rem;'>🌧️</span><br>"
+                f"<span style='font-size:1.3rem;font-weight:700;color:#a5b4fc;'>PLOURÀ</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat: {prob_plou:.1%}</span></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"<div style='text-align:center;padding:1rem;border-radius:12px;"
+                f"background:rgba(13,148,136,0.2);border:1px solid #2dd4bf;'>"
+                f"<span style='font-size:2rem;'>☀️</span><br>"
+                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>NO PLOURÀ</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat de pluja: {prob_plou:.1%}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+
+def section_aemet(bucket: str) -> None:
+    bundle = _aemet_model(bucket)
+
+    col_ml, col_chart = st.columns(2, gap="large")
+    with col_ml:
+        st.markdown("##### Model de predicció de pluja (Logistic Regression)")
+        if bundle and "error" in bundle:
+            st.warning(bundle["error"])
+            st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres")
+        elif bundle:
+            _render_ml_panel(bundle)
+        else:
+            st.info("Sense dades de train/test per entrenar el model.")
+    with col_chart:
+        st.markdown("##### Evolució climàtica per municipi")
+        _render_climate_chart(bucket)
+
+    if bundle and "error" not in bundle:
+        st.markdown("<div style='margin-top:1.25rem;border-top:1px solid rgba(94,234,212,0.15);padding-top:0.5rem;'></div>", unsafe_allow_html=True)
+        _render_rain_predictor(bundle)
+
+
+@st.cache_data(ttl=600, show_spinner="Entrenant model accidents GU…")
+def _accidents_model(bucket: str):
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+    from sklearn.preprocessing import StandardScaler
+
+    df_train = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_ml_train/")
+    df_test  = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_ml_test/")
+    if df_train.empty or df_test.empty:
+        return None
+
+    target    = "accident_greu"
+    drop_cols = [target, "Nom_carrer"]
+
+    def prep(df):
+        X = df.drop(columns=[c for c in drop_cols if c in df.columns])
+        return X.select_dtypes(include="number"), df[target] if target in df.columns else None
+
+    X_train, y_train = prep(df_train)
+    X_test,  y_test  = prep(df_test)
+    if y_train is None or y_test is None or X_train.empty:
+        return None
+    if y_train.nunique() < 2:
+        return {"error": "El dataset de train té una sola classe.", "n_train": len(X_train), "n_test": len(X_test)}
+
+    common  = [c for c in X_train.columns if c in X_test.columns]
+    X_train = X_train[common].fillna(0)
+    X_test  = X_test[common].fillna(0)
+
+    scaler = StandardScaler()
+    # class_weight='balanced' compensa el desequilibri de classes (molts menys accidents greus)
+    model  = LogisticRegression(max_iter=1000, random_state=42, class_weight="balanced")
+    model.fit(scaler.fit_transform(X_train), y_train)
+    y_pred = model.predict(scaler.transform(X_test))
+
+    # Distribució de classes al train per mostrar-la al panel
+    class_counts = y_train.value_counts().to_dict()
+
+    return {
+        "accuracy":     accuracy_score(y_test, y_pred),
+        "precision":    precision_score(y_test, y_pred, zero_division=0),
+        "recall":       recall_score(y_test, y_pred, zero_division=0),
+        "f1":           f1_score(y_test, y_pred, zero_division=0),
+        "cm":           confusion_matrix(y_test, y_pred).tolist(),
+        "n_train":      len(X_train),
+        "n_test":       len(X_test),
+        "class_counts": class_counts,
+        "model":        model,
+        "scaler":       scaler,
+        "features":     common,
+    }
+
+
+def _fix_enc(s: str) -> str:
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
+def _render_accidents_chart(bucket: str) -> None:
+    df = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_by_district/")
+    if df.empty:
+        st.info("Sense dades d'accidents per districte.")
+        return
+
+    df["Nom_districte"] = df["Nom_districte"].dropna().apply(_fix_enc)
+    df["Nom_barri"]     = df["Nom_barri"].dropna().apply(_fix_enc)
+
+    metric_cols = [c for c in ["total_morts", "total_lesionats_greus", "total_lesionats_lleus",
+                                "total_victimes", "total_vehicles_implicats", "total_accidents"]
+                   if c in df.columns]
+
+    districtes = sorted(df["Nom_districte"].dropna().unique().tolist())
+    sel_dist   = st.selectbox("Districte", districtes, key="acc_dist")
+    df_dist    = df[df["Nom_districte"] == sel_dist]
+    barris     = sorted(df_dist["Nom_barri"].dropna().unique().tolist())
+    sel_barri  = st.selectbox("Barri", barris, key="acc_barri")
+
+    row = df_dist[df_dist["Nom_barri"] == sel_barri]
+    if row.empty or not metric_cols:
+        st.warning("Sense dades per aquesta combinació.")
+        return
+
+    vals   = row[metric_cols].iloc[0]
+    df_bar = pd.DataFrame({"Mètrica": metric_cols, "Valor": [int(vals[c]) for c in metric_cols]})
+
+    chart = (
+        alt.Chart(df_bar)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X("Mètrica:N", title=None, sort=None,
+                    axis=alt.Axis(labelAngle=-30, labelColor="#94a3b8")),
+            y=alt.Y("Valor:Q", title="Total",
+                    axis=alt.Axis(labelColor="#94a3b8", titleColor="#cbd5e1")),
+            color=alt.Color("Mètrica:N",
+                            scale=alt.Scale(scheme="tealblues"),
+                            legend=None),
+            tooltip=["Mètrica:N", "Valor:Q"],
+        )
+        .properties(height=300, background="#0f172a",
+                    title=f"{sel_barri}  ·  {sel_dist}")
+        .configure_title(color="#f1f5f9")
+        .configure_view(strokeOpacity=0)
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _render_accidents_predictor(bundle: dict) -> None:
+    st.markdown("##### Predictor d'accident greu")
+    model    = bundle.get("model")
+    scaler   = bundle.get("scaler")
+    features = bundle.get("features", [])
+    if not model or not features:
+        st.info("Model no disponible.")
+        return
+
+    label_map = {
+        "NK_Any":  ("Any",        2020, 2025, 2024),
+        "Mes_any": ("Mes (1–12)",    1,   12,    6),
+        "Dia_mes": ("Dia (1–31)",    1,   31,   15),
+        "Hora_dia":("Hora (0–23)",   0,   23,   12),
+    }
+
+    vals    = {}
+    ordered = [f for f in label_map if f in features]
+    cols    = st.columns(len(ordered) if ordered else 1)
+    for i, feat in enumerate(ordered):
+        label, mn, mx, default = label_map[feat]
+        vals[feat] = cols[i].slider(label, min_value=mn, max_value=mx, value=default, key=f"acc_pred_{feat}")
+
+    if st.button("Predir", key="acc_predict_btn", use_container_width=True):
+        import numpy as np
+        row        = np.array([[vals.get(f, 0) for f in features]])
+        y_pred     = model.predict(scaler.transform(row))[0]
+        proba      = model.predict_proba(scaler.transform(row))[0]
+        prob_greu  = float(proba[1]) if len(proba) > 1 else float(proba[0])
+        if y_pred == 1:
+            st.markdown(
+                f"<div style='text-align:center;padding:1rem;border-radius:12px;"
+                f"background:rgba(220,38,38,0.18);border:1px solid #ef4444;'>"
+                f"<span style='font-size:2rem;'>🚨</span><br>"
+                f"<span style='font-size:1.3rem;font-weight:700;color:#fca5a5;'>ACCIDENT GREU</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat: {prob_greu:.1%}</span></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"<div style='text-align:center;padding:1rem;border-radius:12px;"
+                f"background:rgba(13,148,136,0.18);border:1px solid #2dd4bf;'>"
+                f"<span style='font-size:2rem;'>✅</span><br>"
+                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>ACCIDENT LLEU / NO GREU</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat accident greu: {prob_greu:.1%}</span></div>",
+                unsafe_allow_html=True,
+            )
+
+
+def section_accidents_gu(bucket: str) -> None:
+    bundle = _accidents_model(bucket)
+
+    col_ml, col_chart = st.columns(2, gap="large")
+    with col_ml:
+        st.markdown("##### Model de predicció d'accident greu (Logistic Regression + balanced)")
+        if bundle and "error" in bundle:
+            st.warning(bundle["error"])
+            st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres")
+        elif bundle:
+            cc = bundle.get("class_counts", {})
+            st.caption(f"Distribució train → No greu (0): {cc.get(0, '?'):,} · Greu (1): {cc.get(1, '?'):,}")
+            _render_ml_panel(bundle, labels=["No greu", "Greu"])
+        else:
+            st.info("Sense dades de train/test per entrenar el model.")
+    with col_chart:
+        st.markdown("##### Accidents per districte i barri")
+        _render_accidents_chart(bucket)
+
+    if bundle and "error" not in bundle:
+        st.markdown("<div style='margin-top:1.25rem;border-top:1px solid rgba(94,234,212,0.15);padding-top:0.5rem;'></div>", unsafe_allow_html=True)
+        _render_accidents_predictor(bundle)
+
+
 def section_realtime_parking() -> None:
     start_parking_consumer()
 
@@ -247,6 +661,14 @@ def main() -> None:
     _section_title("Càmeres de trànsit")
     with st.container(border=True):
         section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
+
+    _section_title("AEMET — Clima i predicció de pluja")
+    with st.container(border=True):
+        section_aemet(exploitation_bucket)
+
+    _section_title("Accidents GU — Predicció i estadístiques per zona")
+    with st.container(border=True):
+        section_accidents_gu(exploitation_bucket)
 
     st.markdown(
         """
