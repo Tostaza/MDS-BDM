@@ -25,11 +25,15 @@ class DeltaLake():
             return
         except TableNotFoundError:
             print("Table not found. Initializing for the first time...")
+            # ``schema_mode="merge"`` només té efecte si la taula ja existeix; aquí es defensiu
+            # per si una crida concurrent l'acaba de crear amb un esquema lleugerament diferent
+            # (p. ex. Nitter afegint un camp al RSS entre runs successius).
             write_deltalake(
                 persistent_path,
                 df_new,
                 storage_options=storage_options,
                 mode="overwrite",
+                schema_mode="merge",
             )
             print("Delta table initialized successfully.")
 

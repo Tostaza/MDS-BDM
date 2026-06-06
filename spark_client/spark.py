@@ -28,6 +28,11 @@ class SparkClient(ClientMotorProcessamiento):
 
         ``LEGACY`` es necesario para que ``to_timestamp`` con patrones tipo RSS
         (``EEE, dd MMM yyyy HH:mm:ss z``) en el pipeline de ``transit_posts`` no falle en Spark 3+.
+
+        También activa Delta Lake (extensión SQL + catálogo) y pide los jars
+        ``io.delta:delta-core_2.12:2.4.0`` por Ivy. Sin esto, ``read/write.format("delta")``
+        fallaría con ``ClassNotFoundException``. La versión está alineada con Spark 3.4.x
+        (Delta 2.4.x es la rama soportada).
         """
         self.spark = (
             SparkSession.builder.appName(self.app_name)
@@ -44,6 +49,15 @@ class SparkClient(ClientMotorProcessamiento):
             )
             # RSS/Nitter: to_timestamp("EEE, dd MMM yyyy HH:mm:ss z") requereix parser pre-Spark 3.
             .config("spark.sql.legacy.timeParserPolicy", "LEGACY")
+            # Delta Lake — duplicado vs spark-defaults.conf intencionadamente para que
+            # SparkSession.builder funcione cuando se llama fuera de spark-submit
+            # (jupyter, tests locales con master=local[*]).
+            .config("spark.jars.packages", "io.delta:delta-core_2.12:2.4.0")
+            .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+            .config(
+                "spark.sql.catalog.spark_catalog",
+                "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            )
             .getOrCreate()
         )
         return self.spark

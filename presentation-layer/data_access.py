@@ -104,14 +104,33 @@ def get_s3_object_bytes(bucket: str, key: str) -> bytes:
 
 
 def load_parquet_prefix(bucket: str, prefix: str) -> pd.DataFrame:
-    """Lee todos los .parquet bajo s3://bucket/prefix/ (carpeta)."""
+    """Lee todos los .parquet bajo s3://bucket/prefix/ (carpeta), excluyendo _delta_log/."""
     so = s3_storage_options()
     p = prefix.strip("/")
-    base = f"s3://{bucket}/{p}/" if p else f"s3://{bucket}/"
-    try:
-        return pd.read_parquet(base, storage_options=so)
-    except Exception:
-        try:
-            return pd.read_parquet(base.rstrip("/"), storage_options=so)
-        except Exception:
-            return pd.DataFrame()
+    import s3fs
+    import pyarrow.parquet as pq
+    fs = s3fs.S3FileSystem(
+        key=so["key"],
+        secret=so["secret"],
+        client_kwargs=so["client_kwargs"],
+    )
+    root = f"{bucket}/{p}"
+    keys = set(fs.glob(f"{root}/*.parquet") + fs.glob(f"{root}/**/*.parquet"))
+    parquet_keys = [k for k in keys if "_delta_log" not in k]
+    if not parquet_keys:
+        return pd.DataFrame()
+    table = pq.read_table(parquet_keys, filesystem=fs)
+    return table.to_pandas()
+
+
+def load_trams_map(bucket: str, prefix: str = "ajuntament_bcn/trams_map/") -> pd.DataFrame:
+    """
+    Lee la tabla map-ready de trams (una fila por tram: `id_tram`, `descripcio`, `path`,
+    `n_punts`, `estatActual`, …) que materializa ``exploitation-zone`` con
+    ``materialize_trams_map``.
+
+    Es un envoltorio fino sobre :func:`load_parquet_prefix`; existe como función propia
+    para dejar explícito el contrato que consume el widget de mapa y porque la columna
+    ``path`` vuelve como lista de ``[lon, lat]`` (deck.gl `PathLayer`), no como escalar.
+    """
+    return load_parquet_prefix(bucket, prefix)
