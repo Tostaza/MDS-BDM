@@ -4,12 +4,13 @@ from __future__ import annotations
 Utilidades para la capa "trusted": leer **tablas Delta**, aplicar reglas de calidad de datos
 con Spark y volver a escribir **Delta**. Pensado para rutas locales o S3A (MinIO, SeaweedFS, etc.).
 
-Nota d'arquitectura: el bronze persistent (``persistent-landing-zone``) ja són taules Delta
-escrites des d'Airflow amb ``delta-rs`` (paquet ``deltalake``). Aquí llegim com a Delta perquè
-el log transaccional (``_delta_log``) ens diu quins fitxers Parquet són vigents — si en lloc
+Nota d'arquitectura: el bronze persistent (persistent-landing-zone) ja són taules Delta
+escrites des d'Airflow amb delta-rs (paquet deltalake). Aquí llegim com a Delta perquè
+el log transaccional (_delta_log) ens diu quins fitxers Parquet són vigents, si en lloc
 d'això llegíssim com a Parquet pla, podríem absorbir fitxers orfes d'overwrites anteriors i
 acabar amb files duplicades. L'escriptura també és Delta perquè així la capa Gold
 (exploitation) hereta el mateix avantatge: ACID, ``overwrite`` segur, time-travel.
+Manetin traçabilitat en tot moment de les transaccions que fem amb els fitxers.
 """
 
 from dataclasses import dataclass
@@ -23,8 +24,8 @@ from pyspark.sql.types import StringType
 @dataclass
 class CleanOptions:
     """
-    Configura qué pasos de limpieza se ejecutan en `Cleaner.clean()`.
-    Si no pasas nada, se usan los valores por defecto del dataclass.
+    Configura les passes de clean --> `Cleaner.clean()`.
+    Si no pases res, s'usan els valorss  per default 
     """
 
     # Quitar espacios al inicio/fin en columnas de texto (StringType).
@@ -38,8 +39,7 @@ class CleanOptions:
     duplicate_subset: Optional[Sequence[str]] = None
     # Si True, borra filas donde TODAS las columnas son NULL (filas “vacías”).
     drop_rows_all_null: bool = False
-    # Cómo cuenta los NULL en dropna: "any" = basta un NULL en el subset; "all" = todos NULL en el subset.
-    dropna_how: str = "any"
+
 
 
 class Cleaner:
@@ -97,6 +97,18 @@ class Cleaner:
 
         return out
 
+    @staticmethod
+    def _sanitize_column_names(df: DataFrame) -> DataFrame:
+        """Substitueix caracters invalids per Delta ( ,;{}()\n\t=) per guio baix."""
+        import re
+        invalid = re.compile(r'[ ,;{}\(\)\n\t=]+')
+        out = df
+        for field in out.schema.fields:
+            clean = invalid.sub("_", field.name).strip("_")
+            if clean != field.name:
+                out = out.withColumnRenamed(field.name, clean)
+        return out
+
     def write_delta(
         self,
         df: DataFrame,
@@ -104,17 +116,8 @@ class Cleaner:
         mode: str = "overwrite",
         partition_by: Optional[Sequence[str]] = None,
     ) -> None:
-        """
-        Materializa el DataFrame como **tabla Delta** en `path`.
-
-        - `mode`: típico "overwrite" (reemplaza la versión activa en ``_delta_log``) o "append".
-          Con Delta, "overwrite" es atómico: si el job casca a mitja escriptura el log no es promociona
-          i els lectors continuen veient la versió anterior. Amb Parquet pla, en canvi, podies acabar
-          amb mitja carpeta sobreescrita i mitja antiga.
-        - `partition_by`: subcarpetes Hive-style por valor (igual que en Parquet).
-        - ``overwriteSchema=true``: si l'esquema canvia (p. ex. la pipeline afegeix una columna)
-          Delta refusa l'overwrite per defecte; aquí volem que la trusted-zone es regeneri sense fricció.
-        """
+        """Escriu el DataFrame com a taula Delta a path. Sanititza noms de columnes abans d'escriure."""
+        df = self._sanitize_column_names(df)
         writer = df.write.format("delta").mode(mode).option("overwriteSchema", "true")
         if partition_by:
             writer = writer.partitionBy(*partition_by)

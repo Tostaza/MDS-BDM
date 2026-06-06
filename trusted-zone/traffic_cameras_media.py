@@ -57,8 +57,7 @@ def _int_env(name: str, default: str) -> int:
 
 def _s3_client():
     """
-    Mateixa configuració que ``ensure_bucket_exists`` a ``trusted_zone.py`` (boto per defecte),
-    més ``S3_ENDPOINT`` / ``AWS_*`` com a fallback per si només exportes això al ``docker exec``.
+    Connectivitat del client S3, per fer la connexió.
     """
     import boto3
 
@@ -75,29 +74,23 @@ def _s3_client():
 
 def _with_data_prefix(subpath: str, data_prefix: str) -> str:
     """
-    Antepone ``DATA_PREFIX`` a un subpath y devuelve prefijo S3 terminado en ``/``.
-
-    Ej.: ``("traffic_cameras/images/raw", "proyecto")`` → ``proyecto/traffic_cameras/images/raw/``.
+    Antepone DATA_PREFIX a un subpath y devuelve prefijo S3 terminado en /.
+    Ej.: ("traffic_cameras/images/raw", "proyecto") → proyecto/traffic_cameras/images/raw/.
     """
     p = (data_prefix or "").strip("/")
     s = subpath.strip("/")
     return f"{p}/{s}/" if p else f"{s}/"
 
-
-def _camera_raw_prefix(data_prefix: str) -> str:
-    """Prefijo S3 de **origen** (imágenes crudas en persistent-landing)."""
-    return _with_data_prefix("traffic_cameras/images/raw", data_prefix)
-
-
 def _camera_trusted_prefix(data_prefix: str) -> str:
-    """Prefijo S3 de **destino** en trusted-zone (imágenes ya limpiadas)."""
-    return _with_data_prefix("traffic_cameras/images/trusted", data_prefix)
+    """Prefijo S3 de destino en trusted-zone."""
+    return _with_data_prefix("traffic_cameras/images/raw", data_prefix)
 
 
 def _raw_prefixes_to_scan(data_prefix: str) -> list[str]:
     """
-    Prefixos S3 a provar (S3 és case-sensitive). Per defecte ``traffic_cameras`` + variants típiques.
-    Si ``CAMERA_MEDIA_RAW_PREFIX`` està definit, només s’usa aquest (més ``DATA_PREFIX`` si cal).
+    Prefixos S3 a provar (S3 és case-sensitive). Per defecte traffic_cameras + variants típiques.
+    Si CAMERA_MEDIA_RAW_PREFIX està definit, només s’usa aquest (més DATA_PREFIX si cal).
+    Mètode generalització per si de cas canviessin el nom el servei d'on consumim les dades.
     """
     override = _env("CAMERA_MEDIA_RAW_PREFIX", "").strip().strip("/")
     if override:
@@ -139,6 +132,9 @@ def _is_image_key(key: str) -> bool:
     return any(k.endswith(ext) for ext in _IMAGE_EXT)
 
 
+"""
+Extreu el path després del que ve de 7raw/ --> name de la imatge, per prograpagarla a altres capes amb el mateix nom.
+"""
 def _relative_after_images_raw(key: str) -> str | None:
     """Extreu ``timestamp/fitxer`` després de ``.../images/raw/`` (sense importar majúscules)."""
     m = re.search(r"(?i)/images/raw/(.+)$", key)
@@ -149,14 +145,15 @@ def _relative_after_images_raw(key: str) -> str | None:
 
 def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallback: str) -> str:
     """
-    Construye la clave de salida en trusted (siempre bajo ``…/images/trusted/``).
-
+    Construye la clave de salida en trusted (siempre bajo …/images/trusted/) + el nom de la imatge que recupea de la funcio anterior.
     Corrige extensión ``.pmng`` errónea a ``.png`` en la clave de destino.
     """
     rel = _relative_after_images_raw(source_key)
     if rel is None:
         rel = rel_fallback
-    out = f"{trusted_prefix}{rel}"
+    # Només el nom de fitxer, sense subcarpeta de timestamp
+    filename = rel.split("/")[-1]
+    out = f"{trusted_prefix}{filename}"
     if out.lower().endswith(".pmng"):
         out = out[:-5] + ".png"
     return out
@@ -165,7 +162,6 @@ def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallbac
 def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max_edge: int):
     """
     Aplica mejoras Pillow a un frame PIL (RGB): brillo, nitidez, contraste y resize opcional.
-
     Parámetros ``brightness`` / ``sharpness`` / ``contrast`` son factores (>1 intensifica).
     """
     from PIL import Image, ImageEnhance
@@ -192,7 +188,6 @@ def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max
 def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, contrast: float, max_edge: int) -> bytes:
     """
     Decodifica bytes de imagen, mejora y vuelve a codificar a bytes (GIF/JPEG/PNG/WebP según formato).
-
     GIF con varios frames: procesa cada frame y reensambla el GIF.
     """
     from PIL import Image, ImageSequence
@@ -208,6 +203,7 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
             durations.append(im.info.get("duration", 100))
             frames_out.append(_enhance_frame(frame, brightness, sharpness, contrast, max_edge))
         out = io.BytesIO()
+        # AQUI ANIREM AFEGINT LA SEQÜENCIA DE FRAMES.
         frames_out[0].save(
             out,
             format="GIF",
@@ -219,6 +215,7 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
         )
         return out.getvalue()
 
+    # SERIE LA PART DEL ELSE, QUAN NO ES UN GIF I PER TANT TRACTEM LA IMATGE PER SI SOLA.
     single = _enhance_frame(im, brightness, sharpness, contrast, max_edge)
     out = io.BytesIO()
     if fmt in ("JPEG", "JPG"):
@@ -233,31 +230,17 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
 
 
 def process_traffic_cameras_persistent_to_trusted() -> int:
-    """
-    Punto de entrada principal: **persistent-landing → trusted-zone** solo para imágenes.
 
-    Pasos:
-        1. Comprueba ``CAMERA_MEDIA_ENABLED`` e import de Pillow.
-        2. Lista claves bajo los prefijos calculados (incluye prueba de listado al bucket).
-        3. Por cada imagen: ``get_object`` → mejora → ``put_object`` en trusted.
-
-    Returns:
-        Número de archivos escritos correctamente en trusted, o ``0`` si no hay datos o está desactivado.
-    """
     if not _truthy("CAMERA_MEDIA_ENABLED", "true"):
         print("traffic_cameras (imatges): CAMERA_MEDIA_ENABLED=false, s'omet.")
         return 0
 
+    pillow_ok = False
     try:
         from PIL import Image  # noqa: F401
-
-        print(f"[traffic_cameras] Pillow OK (versió importable)")
+        pillow_ok = True
     except ImportError:
-        print(
-            "traffic_cameras (imatges): Pillow NO instal·lat. "
-            "Al Docker Spark: `pip install Pillow` o reconstrueix la imatge (Dockerfile amb Pillow)."
-        )
-        return 0
+        print("[traffic_cameras] Pillow no disponible, es copiaran les imatges sense millora.")
 
     persistent_bucket = _env("PERSISTENT_BUCKET", "persistent-landing-zone")
     trusted_bucket = _env("TRUSTED_BUCKET", "trusted-zone")
@@ -272,19 +255,6 @@ def process_traffic_cameras_persistent_to_trusted() -> int:
     max_edge = _int_env("CAMERA_MAX_EDGE", "0")
 
     s3 = _s3_client()
-    ep = _env("S3A_ENDPOINT", _env("S3_ENDPOINT", "http://seaweedfs:8333"))
-    print(
-        f"[traffic_cameras] boto3 endpoint={ep!r} "
-        f"persistent_bucket={persistent_bucket!r} trusted_bucket={trusted_bucket!r}"
-    )
-    print(f"[traffic_cameras] prefixes a listar ({len(raw_prefixes)}): {raw_prefixes!r}")
-    try:
-        probe = s3.list_objects_v2(Bucket=persistent_bucket, MaxKeys=5)
-        sample = [o.get("Key") for o in (probe.get("Contents") or [])[:5]]
-        print(f"[traffic_cameras] prova list_bucket OK (mostra fins 5 claus): {sample}")
-    except Exception as ex:
-        print(f"[traffic_cameras] ERROR: no es pot listar el bucket persistent {persistent_bucket!r}: {ex}")
-        return 0
 
     keys: list[str] = []
     seen_keys: set[str] = set()
@@ -327,10 +297,13 @@ def process_traffic_cameras_persistent_to_trusted() -> int:
         out_key = _normalize_trusted_out_key(trusted_prefix, key, rel)
         try:
             body = s3.get_object(Bucket=persistent_bucket, Key=key)["Body"].read()
-            try:
-                enhanced = _bytes_to_enhanced_image(body, brightness, sharpness, contrast, max_edge)
-            except Exception as ex:
-                print(f"  traffic_cameras: millora fallida per {key!r} ({ex}); es copia el binari original.")
+            if pillow_ok:
+                try:
+                    enhanced = _bytes_to_enhanced_image(body, brightness, sharpness, contrast, max_edge)
+                except Exception as ex:
+                    print(f"  traffic_cameras: millora fallida per {key!r} ({ex}); es copia el binari original.")
+                    enhanced = body
+            else:
                 enhanced = body
             s3.put_object(Bucket=trusted_bucket, Key=out_key, Body=enhanced)
             n_ok += 1

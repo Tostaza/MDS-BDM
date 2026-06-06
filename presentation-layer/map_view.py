@@ -102,12 +102,8 @@ def render_trams_map(df: pd.DataFrame) -> None:
     `df` es lo que devuelve ``data_access.load_trams_map`` (una fila por tram). Si está
     vacío, muestra una pista para ejecutar el pipeline en lugar de un mapa en blanco.
     """
-    st.caption(
-        "Origen: `s3://exploitation-zone/ajuntament_bcn/trams_map/` · una polilínea por "
-        "tram coloreada por su **último** `estatActual`. Job: `exploitation-zone` "
-        "(`materialize_trams_map`)."
-    )
-
+    if df is None:
+        return
     data = prepare_map_dataframe(df)
     if data.empty:
         st.info(

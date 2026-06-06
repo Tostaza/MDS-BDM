@@ -1,29 +1,6 @@
 """
-**Pipelines especiales de la capa trusted** (además del Parquet genérico con ``Cleaner``).
-
-Este módulo clasifica carpetas Parquet bajo ``persistent-landing-zone`` y aplica lógica distinta:
-
-1. **Twitter / Nitter (``transit_posts/``)**  
-   Muchas carpetas Delta/Parquet (un post cada una) se leen con ``mergeSchema``, se aplana
-   el JSON tipo RSS (``title_detail``, ``summary``, HTML → texto plano, URL de vídeo,
-   ``published_ts``, etc.), se deduplica por ``link`` o ``id`` y se escribe **un único**
-   dataset Parquet en ``trusted-zone/.../transit_posts/`` (para Chroma / dashboard).
-
-2. **Incidents SCT (``sct/traffic_incidents/``)**  
-   La bronze ya guardó ``file_name`` + ``xml_content``. Aquí se enriquece (trim, longitud,
-   ``title_guess`` por regex, filtro opcional ``SCT_FILTER_BARCELONA_ONLY``), deduplicado por
-   ``file_name`` y escritura Parquet en trusted.
-
-3. **Accidents GU**  
-   ``clean_options_for_accidents_gu`` devuelve ``CleanOptions`` con deduplicado por
-   ``Numero_expedient`` cuando existe la columna.
-
-4. **AEMET (``aemet/``)**  
-   Predicción municipal horaria: se aplanan los arrays por ``periodo`` (0–23 h) en **una fila
-   por hora y día** dentro de ``prediccion.dia``, con columnas legibles (temperatura, viento, etc.).
-
-``partition_roots_by_pipeline`` reparte las URIs devueltas por ``discover_parquet_roots`` en
-cuatro grupos: transit, SCT, AEMET (predicción horaria) y resto (Parquet estándar en ``trusted_zone.main``).
+Pipelines especials de trusted: transit_posts (RSS Nitter), SCT incidents (WFS/GML),
+accidents GU i AEMET horari. partition_roots_by_pipeline reparteix les arrels entre ells.
 """
 
 from __future__ import annotations
@@ -43,7 +20,7 @@ from cleaner import CleanOptions, Cleaner
 
 
 def _col_dtype(df: DataFrame, colname: str):
-    """Devuelve el ``DataType`` de la columna ``colname`` en el schema del DataFrame, o ``None``."""
+    """Retorna el DataType de la columna o None si no existeix."""
     for f in df.schema.fields:
         if f.name == colname:
             return f.dataType
@@ -59,6 +36,11 @@ def _truthy(name: str, default: str = "false") -> bool:
     return _env(name, default).lower() in ("1", "true", "yes", "on")
 
 
+"""
+Spark accepta implkementació de funcions externes definidies per nosaltres i aqui li especifiquem el output
+de la funció nostre UDF, quina format volem que ens retorni en les dades després de fer / aplicar
+la nostra funció.
+"""
 AEMET_HOURLY_STRUCT = StructType(
     [
         StructField("aemet_municipio_id", StringType(), True),
@@ -91,7 +73,9 @@ def _aemet_str(v: Any) -> str | None:
         return None
     return str(v)
 
-
+"""
+El que farem aquí és per les diferents variables target, les adaptarem a format de dict.
+"""
 def _normalize_prediccion_cell(prediccion: Any) -> dict | None:
     if prediccion is None:
         return None
@@ -111,7 +95,9 @@ def _normalize_prediccion_cell(prediccion: Any) -> dict | None:
         return parsed if isinstance(parsed, dict) else None
     return None
 
-
+"""
+Comprovació que és un format de hora, que realment correspon a una hora concreta.
+"""
 def _is_aemet_hour_period(p: Any) -> bool:
     try:
         if p is None:
@@ -122,6 +108,10 @@ def _is_aemet_hour_period(p: Any) -> bool:
         return False
 
 
+"""
+Per cada entrada ens retornara una llista de les diferents hores que estaria guardant.
+e. g : retornaria [0, 1, .... , 23] les diferents hores per les que tenim prediccions.
+"""
 def _hour_periods_for_day(day: dict) -> list[str]:
     skip = frozenset({"orto", "ocaso", "fecha"})
     found: set[int] = set()
@@ -197,10 +187,7 @@ def aemet_prediccion_to_hourly_rows(
     elaborado: Any,
     provincia: Any,
 ) -> list:
-    """
-    Una entrada JSON AEMET (columna ``prediccion``) → una fila per cada hora prevista (0–23)
-    i dia dins ``prediccion.dia``. Retorna llista de tuples compatibles amb ``AEMET_HOURLY_STRUCT``.
-    """
+    """Converteix una entrada JSON AEMET en una fila per cada hora (0-23) i dia."""
     pred = _normalize_prediccion_cell(prediccion)
     if not pred:
         return []
@@ -257,10 +244,7 @@ def aemet_prediccion_to_hourly_rows(
 
 
 def flatten_aemet_hourly_df(df: DataFrame) -> DataFrame:
-    """
-    Expandeix prediccions AEMET horàries: una fila d'entrada (un ``elaborado``) → N files
-    (per cada combinació dia + hora amb dades).
-    """
+    """Expandeix prediccions AEMET: una fila d entrada -> N files (dia + hora)."""
     if "prediccion" not in df.columns:
         return df
 
@@ -278,15 +262,15 @@ def flatten_aemet_hourly_df(df: DataFrame) -> DataFrame:
     field_names = [f.name for f in AEMET_HOURLY_STRUCT.fields]
     return exploded.select([F.col(f"_h.{n}").alias(n) for n in field_names])
 
-
+"""
+Processar Aemet predicitons, fent ús de funcions auxiliars que ens peremtra ntenir-ho finalment com strcutured data.
+"""
 def process_aemet_predictions_parquet(
     cleaner: Cleaner,
     input_root_uri: str,
     output_root_uri: str,
 ) -> None:
-    """
-    Llegeix Parquet AEMET (persistent), aplanat horari a trusted (una fila per hora i dia).
-    """
+    """Llegeix Parquet AEMET, expandeix a granularitat horaria i escriu Delta a trusted."""
     df = cleaner.read_delta(input_root_uri.rstrip("/") + "/")
     df = flatten_aemet_hourly_df(df)
     dup_subset = (
@@ -304,17 +288,16 @@ def process_aemet_predictions_parquet(
     )
     cleaned = cleaner.clean(df, options=opts)
     cleaner.write_delta(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
-    print(f"  aemet (horari) → {output_root_uri.rstrip('/') + '/'!r}")
+    print(f"  aemet (horari) -> {output_root_uri.rstrip('/') + '/'!r}")
 
 
+"""
+Per classificar els diferents datasets segons d'on provenen, SCT | Transit | AEMET | REST.
+"""
 def partition_roots_by_pipeline(
     landing_base: str, roots: Sequence[str]
 ) -> tuple[list[str], list[str], list[str], list[str]]:
-    """
-    Separa les arrels retornades per `discover_parquet_roots` en:
-    (transit_posts, sct/traffic_incidents, aemet, resta).
-    `landing_base` ha d'estar sense barra final inconsistent (es fa rstrip internament).
-    """
+    """Reparteix arrels en (transit_posts, sct/traffic_incidents, aemet, resta)."""
     from trusted_paths import relative_path_under_base
 
     lb = landing_base.rstrip("/")
@@ -339,9 +322,11 @@ def partition_roots_by_pipeline(
             rest.append(r)
     return transit, sct, aemet, rest
 
-
+"""
+Aqui fem dels tweets de transit, fem que sigui un format tabular per guardar-se'n.
+"""
 def _flatten_transit_rss_df(df: DataFrame) -> DataFrame:
-    """Extreu camps útils per RAG / retrieval des del JSON estil Nitter RSS."""
+    """Extreu camps utils per RAG des del JSON estil Nitter RSS."""
     out = df
 
     for struct_col, text_alias in (
@@ -415,15 +400,7 @@ def process_transit_posts(
     twitter_root: str,
     trusted_output_uri: str,
 ) -> bool:
-    """
-    Llegeix la taula Delta centralitzada de transit_posts (un row per tweet) des de bronze,
-    aplica flatten RSS + Cleaner i escriu Delta a ``trusted_output_uri``.
-
-    Abans aquesta funció es deia ``_union`` perquè rebia una *llista* d'arrels Parquet
-    (una taula Delta per tweet) i feia ``parquet(*paths) + mergeSchema``. Aquell disseny
-    venia del fet que bronze creava una taula Delta per fitxer landing. Ara que bronze
-    centralitza tot a una sola taula, no cal fusió i podem fer lectura Delta nativa.
-    """
+    """Llegeix la taula Delta centralitzada de transit_posts, aplana RSS i escriu a trusted."""
     if not (twitter_root or "").strip():
         print("  transit_posts: cap arrel a processar.")
         return False
@@ -458,15 +435,16 @@ def process_transit_posts(
         n = cleaned.count()
     except Exception:
         n = -1
-    print(f"  transit_posts → {out!r} (files comptades: {n}).")
+    print(f"  transit_posts -> {out!r} (files comptades: {n}).")
     return True
 
 
+"""
+Donat un xml el que fara es per cada incident generar una row, així passem el xml a un format strcutured
+Per tant, per cada entrada en el xml d'incidencia, extreurem una row amb la seva informació.
+"""
 def parse_sct_xml_to_rows(xml_text: str) -> list[dict]:
-    """
-    Parsea el XML crudo SCT (WFS/GML) y devuelve un dict por cada
-    gml:featureMember con los campos planos de cite:mct2_v_afectacions_data.
-    """
+    """Parseja el XML WFS/GML de SCT i retorna un dict pla per cada featureMember."""
     if not xml_text:
         return []
 
@@ -501,32 +479,22 @@ def parse_sct_xml_to_rows(xml_text: str) -> list[dict]:
 
 
 def enrich_sct_xml_content_df(df: DataFrame) -> DataFrame:
-    """
-    Parsea xml_content (WFS/GML de SCT) y explota cada featureMember
-    en una fila propia con columnas planas.
-    Mantiene file_name y cualquier otra columna que venga del Parquet original.
-    """
+    """Parseja xml_content (WFS/GML de SCT) i explota cada featureMember en una fila plana."""
     if "xml_content" not in df.columns:
         return df
 
-    # Filtrar per la ciutat de bcn, ens centrem aquí, llavors aqui es on fem el fltre i reduim dimensio del size de elements amb els que treballemm.
     out = df
     if _truthy("SCT_FILTER_BARCELONA_ONLY", "false"):
         out = out.filter(F.lower(F.col("xml_content")).contains("barcelona"))
 
-    # UDF: string XML → array de dicts (uno por featureMember)
     parse_udf = F.udf(
         parse_sct_xml_to_rows,
         ArrayType(MapType(StringType(), StringType()))
     )
 
-    # Aplica el UDF → columna "features" con array de dicts
     out = out.withColumn("features", parse_udf(F.col("xml_content")))
-
-    # Explode: cada dict del array → fila propia
     out = out.withColumn("feature", F.explode("features"))
 
-    # Extrae cada campo del map como columna plana
     FIELDS = [
         "identificador", "tipus", "subtipus", "carretera",
         "pk_inici", "pk_fi", "causa", "cap_a", "data",
@@ -535,25 +503,22 @@ def enrich_sct_xml_content_df(df: DataFrame) -> DataFrame:
     for field in FIELDS:
         out = out.withColumn(field, F.col("feature")[field])
 
-    # Limpia columnas intermedias
     out = out.drop("features", "feature", "xml_content")
 
     return out
 
+"""
 
+"""
 def process_sct_traffic_incidents_parquet(
     cleaner: Cleaner,
     input_root_uri: str,
     output_root_uri: str,
 ) -> None:
-    """
-    Lee Parquet/Delta de incidents SCT desde ``input_root_uri``, aplica ``enrich_sct_xml_content_df``,
-    ``Cleaner.clean`` con deduplicado por ``file_name`` y escribe en ``output_root_uri``.
-    """
+    """Llegeix Delta SCT, parseja el XML, deduplicat per identificador i escriu a trusted."""
     df = cleaner.read_delta(input_root_uri.rstrip("/") + "/")
-    df = enrich_sct_xml_content_df(df)   # ← ahora parsea y explota el XML
+    df = enrich_sct_xml_content_df(df)
 
-    # Deduplicación por identificador, basicament es eliminar auqells que tinguin identificador igual.
     dup_subset = ("identificador",) if "identificador" in df.columns else None
     opts = CleanOptions(
         trim_strings=True,
@@ -563,15 +528,13 @@ def process_sct_traffic_incidents_parquet(
     )
     cleaned = cleaner.clean(df, options=opts)
     cleaner.write_delta(cleaned, output_root_uri.rstrip("/") + "/", mode="overwrite")
-    print(f"  sct/traffic_incidents → {output_root_uri.rstrip('/') + '/'!r}")
 
-
+"""
+Per al dataset de la Guardia urbana el que farem és mirar si hi ha numero expedient, per així vigilar que
+no hi hagin duplicats per aquell atribut. Segons si esta o no, doncs aplicarem un tipus de cleaner o un altre.
+"""
 def clean_options_for_accidents_gu(df: DataFrame) -> CleanOptions:
-    """
-    Construye ``CleanOptions`` para el prefijo ``ajuntament_bcn/accidents_gu`` en trusted.
-
-    Si existe ``Numero_expedient``, deduplica por esa columna (clave natural del expediente).
-    """
+    """Retorna CleanOptions per accidents GU, deduplicant per Numero_expedient si existeix."""
     if "Numero_expedient" in df.columns:
         return CleanOptions(
             trim_strings=True,
