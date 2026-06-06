@@ -297,6 +297,30 @@ services:
       - redis
     restart: unless-stopped
 
+  camera-embedder:
+    image: python:3.11-slim
+    profiles:
+      - embed
+    environment:
+      - S3_ENDPOINT=http://seaweedfs:8333
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=admin
+      - EXPLOITATION_BUCKET=exploitation-zone
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+    volumes:
+      - ./exploitation-zone:/app
+    working_dir: /app
+    command: >
+      bash -c "pip install --quiet sentence-transformers chromadb boto3 pillow &&
+               python camera_embeddings.py"
+    networks:
+      - bdm-network
+    depends_on:
+      - chromadb
+      - seaweedfs
+    restart: no
+
   # ----------------------------------------- AIRFLOW ----------------------------------------- #
 
   postgres:

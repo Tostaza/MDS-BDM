@@ -188,6 +188,47 @@ def _fmt_camera_site(site_key: str) -> str:
     return s.strip().title()
 
 
+_YOLO_VEHICLE_CLASSES = {
+    1: "Bicycle",
+    2: "Car",
+    3: "Motorcycle",
+    5: "Bus",
+    7: "Truck",
+}
+
+
+@st.cache_resource(show_spinner="Loading CLIP model…")
+def _load_clip_model():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer("clip-ViT-B-32")
+
+
+@st.cache_resource(show_spinner="Loading YOLO model…")
+def _load_yolo_model():
+    from ultralytics import YOLO
+    return YOLO("yolov8n.pt")
+
+
+def _detect_vehicles(image_bytes: bytes, model) -> tuple[bytes, dict]:
+    import io
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    results = model(img, verbose=False)[0]
+
+    counts: dict[str, int] = {label: 0 for label in _YOLO_VEHICLE_CLASSES.values()}
+    for box in results.boxes:
+        cls_id = int(box.cls[0])
+        if cls_id in _YOLO_VEHICLE_CLASSES:
+            counts[_YOLO_VEHICLE_CLASSES[cls_id]] += 1
+
+    annotated_bgr = results.plot()
+    pil_img = Image.fromarray(annotated_bgr[:, :, ::-1])
+    buf = io.BytesIO()
+    pil_img.save(buf, format="JPEG", quality=90)
+    return buf.getvalue(), counts
+
+
 def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
     sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
     if not sites:
@@ -196,12 +237,16 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
 
     labels = {s: _fmt_camera_site(s) for s in sites}
 
-    selected = st.selectbox(
-        "Càmera",
-        options=sites,
-        format_func=lambda s: labels[s],
-        label_visibility="collapsed",
-    )
+    col_sel, col_toggle = st.columns([3, 1])
+    with col_sel:
+        selected = st.selectbox(
+            "Càmera",
+            options=sites,
+            format_func=lambda s: labels[s],
+            label_visibility="collapsed",
+        )
+    with col_toggle:
+        yolo_on = st.toggle("Vehicle detection", value=False, key="yolo_toggle")
 
     items = list_traffic_camera_gallery_objects(bucket, data_prefix, selected)
     if not items:
@@ -217,9 +262,43 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
 
     try:
         body = get_s3_object_bytes(bucket, key)
-        st.image(body, use_container_width=True)
     except Exception as ex:
         st.error(f"Could not load image: {ex}")
+        return
+
+    if not yolo_on:
+        st.image(body, use_container_width=True)
+        return
+
+    try:
+        model = _load_yolo_model()
+    except Exception as yolo_err:
+        st.error(f"YOLO error: {yolo_err}")
+        st.image(body, use_container_width=True)
+        return
+
+    with st.spinner("Detecting vehicles…"):
+        annotated_bytes, counts = _detect_vehicles(body, model)
+
+    st.image(annotated_bytes, use_container_width=True)
+
+    total = sum(counts.values())
+
+    if total == 0:
+        st.caption("No vehicles detected in this image.")
+        return
+
+    st.markdown(
+        "<div style='margin-top:0.6rem;padding:0.75rem 1rem;"
+        "background:rgba(13,148,136,0.12);border:1px solid rgba(94,234,212,0.2);"
+        "border-radius:12px;display:flex;flex-wrap:wrap;gap:1.2rem;align-items:center;'>",
+        unsafe_allow_html=True,
+    )
+
+    metric_cols = st.columns(len(_YOLO_VEHICLE_CLASSES) + 1)
+    metric_cols[0].metric("Total vehicles", total)
+    for i, (_, label) in enumerate(_YOLO_VEHICLE_CLASSES.items(), start=1):
+        metric_cols[i].metric(label, counts.get(label, 0))
 
 
 @st.cache_data(ttl=600, show_spinner="Training AEMET model…")
@@ -773,6 +852,75 @@ def section_daily_incidents(bucket: str) -> None:
         """)
 
 
+def section_camera_search() -> None:
+    import io
+    import chromadb
+    from PIL import Image
+
+    chroma_host = os.environ.get("CHROMA_HOST", "chromadb")
+    chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
+
+    uploaded = st.file_uploader(
+        "Upload image", type=["jpg", "jpeg", "png"], label_visibility="collapsed"
+    )
+    if uploaded is None:
+        return
+
+    img_bytes = uploaded.read()
+
+    col_in, col_res = st.columns([1, 2])
+
+    with col_in:
+        st.markdown("**Your image**")
+        st.image(img_bytes, use_container_width=True)
+
+    with col_res:
+        st.markdown("**Most likely camera location**")
+
+        try:
+            chroma     = chromadb.HttpClient(host=chroma_host, port=chroma_port)
+            collection = chroma.get_collection("camera_images")
+            n_indexed  = collection.count()
+        except Exception as exc:
+            st.warning(f"ChromaDB not available or not indexed yet: {exc}")
+            st.info("Generate embeddings first:\n```\ndocker compose --profile embed up camera-embedder\n```")
+            return
+
+        if n_indexed == 0:
+            st.info("No embeddings yet.\n```\ndocker compose --profile embed up camera-embedder\n```")
+            return
+
+        with st.spinner("Generating embedding and searching…"):
+            model     = _load_clip_model()
+            query_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            embedding = model.encode(query_img).tolist()
+
+            results   = collection.query(
+                query_embeddings=[embedding],
+                n_results=1,
+                include=["metadatas", "distances"],
+            )
+
+        meta       = results["metadatas"][0][0]
+        dist       = results["distances"][0][0]
+        similarity = max(0.0, 1.0 - dist)
+        cam_label  = _fmt_camera_site(meta["camera"])
+
+        st.markdown(
+            f"<div style='margin:0.5rem 0 0.35rem 0;padding:0.6rem 1rem;"
+            f"background:rgba(13,148,136,0.12);border-left:3px solid #2dd4bf;"
+            f"border-radius:8px;display:flex;justify-content:space-between;align-items:center;'>"
+            f"<span style='font-weight:700;color:#f1f5f9;font-size:0.95rem;'>{cam_label}</span>"
+            f"<span style='color:#5eead4;font-size:0.85rem;font-weight:600;'>{similarity:.1%} similarity</span>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        try:
+            st.image(get_s3_object_bytes(meta["bucket"], meta["s3_key"]), use_container_width=True)
+        except Exception:
+            st.caption(f"Image not available: {meta['s3_key']}")
+
+
 def section_realtime_parking() -> None:
     start_parking_consumer()
 
@@ -933,6 +1081,13 @@ def main() -> None:
     _section_title("Traffic cameras")
     with st.container(border=True):
         section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
+
+    _section_title(
+        "Vehicle location search",
+        "Upload a photo of a vehicle and find the camera locations where it is most likely to appear.",
+    )
+    with st.container(border=True):
+        section_camera_search()
 
     _section_title("AEMET — Climate & Rain Prediction")
     with st.container(border=True):
