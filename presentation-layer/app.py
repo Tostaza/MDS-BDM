@@ -143,8 +143,8 @@ def _hero() -> None:
             border: 1px solid rgba(94, 234, 212, 0.25);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.45);
         ">
-            <p style="margin:0 0 0.35rem 0; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.22em; color:#5eead4; font-weight:600;">BDM · dades en explotació</p>
-            <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Panell de mobilitat urbana</h1>
+            <p style="margin:0 0 0.35rem 0; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.22em; color:#5eead4; font-weight:600;">BDM · live data</p>
+            <h1 style="margin:0; font-size:clamp(1.85rem, 4.2vw, 2.5rem); font-weight:700; color:#f8fafc; line-height:1.12; text-shadow:0 0 40px rgba(45,212,191,0.25);">Urban Mobility Dashboard</h1>
             <p style="margin:0.85rem 0 0 0; font-size:1.05rem; color:#94a3b8; max-width:52rem; line-height:1.6;">
             </p>
         </div>
@@ -170,12 +170,12 @@ def _section_title(title: str, subtitle: str | None = None) -> None:
     )
 
 
-@st.cache_data(ttl=300, show_spinner="Carregant mapa de trams des de S3…")
+@st.cache_data(ttl=300, show_spinner="Loading trams map from S3…")
 def cached_load_trams_map(bucket: str, prefix: str):
     try:
         return load_trams_map(bucket, prefix)
     except Exception as e:
-        st.error(f"Error llegint trams_map de S3: {e}")
+        st.error(f"Error loading trams_map from S3: {e}")
         return None
 
 
@@ -191,7 +191,7 @@ def _fmt_camera_site(site_key: str) -> str:
 def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
     sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
     if not sites:
-        st.info("Sense imatges de càmeres disponibles.")
+        st.info("No camera images available.")
         return
 
     labels = {s: _fmt_camera_site(s) for s in sites}
@@ -205,12 +205,12 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
 
     items = list_traffic_camera_gallery_objects(bucket, data_prefix, selected)
     if not items:
-        st.warning("Sense imatges per aquesta càmera.")
+        st.warning("No images for this camera.")
         return
 
     if len(items) > 1:
         names = [n for _, n in items]
-        choice_name = st.select_slider("Captura", options=names, label_visibility="collapsed")
+        choice_name = st.select_slider("Snapshot", options=names, label_visibility="collapsed")
         key = next(k for k, n in items if n == choice_name)
     else:
         key, _ = items[0]
@@ -219,10 +219,10 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
         body = get_s3_object_bytes(bucket, key)
         st.image(body, use_container_width=True)
     except Exception as ex:
-        st.error(f"No s'ha pogut carregar la imatge: {ex}")
+        st.error(f"Could not load image: {ex}")
 
 
-@st.cache_data(ttl=600, show_spinner="Entrenant model AEMET…")
+@st.cache_data(ttl=600, show_spinner="Training AEMET model…")
 def _aemet_model(bucket: str):
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
@@ -249,7 +249,7 @@ def _aemet_model(bucket: str):
     X_train, X_test = X_train[common].fillna(0), X_test[common].fillna(0)
 
     if y_train.nunique() < 2:
-        return {"error": f"El dataset de train té una sola classe. Torna a executar el pipeline d'exploitation per regenerar les dades amb mostres sintètiques.", "n_train": len(X_train), "n_test": len(X_test)}
+        return {"error": "Training dataset has a single class. Re-run the exploitation pipeline to regenerate data with synthetic samples.", "n_train": len(X_train), "n_test": len(X_test)}
 
     scaler = StandardScaler()
     model = LogisticRegression(max_iter=500, random_state=42)
@@ -279,52 +279,52 @@ def _render_ml_panel(bundle: dict, labels: list | None = None) -> None:
     c4.metric("F1",        f"{f1:.3f}")
 
     cm_raw = bundle["cm"]
-    labels = labels if labels is not None else ["No plou", "Plou"]
+    labels = labels if labels is not None else ["No rain", "Rain"]
     n = len(cm_raw)
     rows = [
-        {"Real": labels[i] if i < 2 else str(i), "Predicció": labels[j] if j < 2 else str(j), "n": cm_raw[i][j]}
+        {"Actual": labels[i] if i < 2 else str(i), "Predicted": labels[j] if j < 2 else str(j), "n": cm_raw[i][j]}
         for i in range(n) for j in range(len(cm_raw[i]))
     ]
     df_cm = pd.DataFrame(rows)
 
     base = alt.Chart(df_cm).encode(
-        x=alt.X("Predicció:N", title="Predicció"),
-        y=alt.Y("Real:N", title="Real"),
+        x=alt.X("Predicted:N", title="Predicted"),
+        y=alt.Y("Actual:N", title="Actual"),
     )
     heatmap = base.mark_rect().encode(
         color=alt.Color("n:Q", scale=alt.Scale(scheme="tealblues"), legend=None)
     )
     text = base.mark_text(color="white", fontSize=20, fontWeight="bold").encode(text="n:Q")
     chart = (heatmap + text).properties(
-        height=200, background="#0f172a", title="Matriu de confusió"
+        height=200, background="#0f172a", title="Confusion Matrix"
     ).configure_axis(
         labelColor="#94a3b8", titleColor="#cbd5e1"
     ).configure_title(color="#f1f5f9")
     st.altair_chart(chart, use_container_width=True)
-    st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres · Logistic Regression")
+    st.caption(f"Train: {bundle['n_train']:,} samples · Test: {bundle['n_test']:,} samples · Logistic Regression")
 
 
 def _render_climate_chart(bucket: str) -> None:
     df = load_parquet_prefix(bucket, "aemet/climate_by_municipio/")
     if df.empty:
-        st.info("Sense dades de climate_by_municipio.")
+        st.info("No climate_by_municipio data available.")
         return
 
     municipis = sorted(df["nombre_municipio"].dropna().unique().tolist())
-    selected = st.selectbox("Municipi", municipis, key="aemet_municipio")
+    selected = st.selectbox("Municipality", municipis, key="aemet_municipio")
 
     sub = df[df["nombre_municipio"] == selected].copy()
     sub["data"] = pd.to_datetime(sub["dia_fecha_parsed"], errors="coerce")
     sub = sub.sort_values("data")
 
     metric_map = {
-        "avg_temperatura":      "Temperatura (°C)",
-        "avg_sens_termica":     "Sensació tèrmica (°C)",
-        "avg_humedad_relativa": "Humitat relativa (%)",
+        "avg_temperatura":      "Temperature (°C)",
+        "avg_sens_termica":     "Feels like (°C)",
+        "avg_humedad_relativa": "Relative humidity (%)",
     }
     cols_ok = [c for c in metric_map if c in sub.columns]
     melt = sub[["data"] + cols_ok].melt(id_vars="data", var_name="clau", value_name="valor")
-    melt["Mètrica"] = melt["clau"].map(metric_map)
+    melt["Metric"] = melt["clau"].map(metric_map)
     melt["valor"] = pd.to_numeric(melt["valor"], errors="coerce")
     melt = melt.dropna(subset=["valor"])
 
@@ -336,10 +336,10 @@ def _render_climate_chart(bucket: str) -> None:
         alt.Chart(melt)
         .mark_line(point=True, strokeWidth=2.5)
         .encode(
-            x=alt.X("data:T", title="Data"),
-            y=alt.Y("valor:Q", title="Valor"),
+            x=alt.X("data:T", title="Date"),
+            y=alt.Y("valor:Q", title="Value"),
             color=alt.Color(
-                "Mètrica:N",
+                "Metric:N",
                 scale=alt.Scale(domain=domain, range=colors),
                 legend=alt.Legend(
                     labelColor="#cbd5e1",
@@ -349,13 +349,13 @@ def _render_climate_chart(bucket: str) -> None:
                 ),
             ),
             strokeDash=alt.StrokeDash(
-                "Mètrica:N",
+                "Metric:N",
                 scale=alt.Scale(domain=domain, range=dashes),
                 legend=None,
             ),
-            tooltip=[alt.Tooltip("data:T", title="Data"), "Mètrica:N", alt.Tooltip("valor:Q", format=".1f")],
+            tooltip=[alt.Tooltip("data:T", title="Date"), "Metric:N", alt.Tooltip("valor:Q", format=".1f")],
         )
-        .properties(height=300, background="#0f172a", title=f"Evolució climàtica — {selected}")
+        .properties(height=300, background="#0f172a", title=f"Climate trend — {selected}")
         .configure_axis(labelColor="#94a3b8", titleColor="#cbd5e1", gridColor="#1e293b")
         .configure_title(color="#f1f5f9")
     )
@@ -363,21 +363,21 @@ def _render_climate_chart(bucket: str) -> None:
 
 
 def _render_rain_predictor(bundle: dict) -> None:
-    st.markdown("##### Predictor de pluja")
+    st.markdown("##### Rain Predictor")
     model = bundle.get("model")
     scaler = bundle.get("scaler")
     features = bundle.get("features", [])
     if not model or not features:
-        st.info("Model no disponible.")
+        st.info("Model not available.")
         return
 
     label_map = {
-        "mes": ("Mes (1–12)", 1, 12, 6),
-        "dia": ("Dia (1–31)", 1, 31, 15),
-        "hora_periodo": ("Hora (0–23)", 0, 23, 12),
-        "temperatura": ("Temperatura (°C)", -5, 45, 20),
-        "sens_termica": ("Sensació tèrmica (°C)", -10, 45, 18),
-        "humedad_relativa": ("Humitat relativa (%)", 0, 100, 65),
+        "mes": ("Month (1–12)", 1, 12, 6),
+        "dia": ("Day (1–31)", 1, 31, 15),
+        "hora_periodo": ("Hour (0–23)", 0, 23, 12),
+        "temperatura": ("Temperature (°C)", -5, 45, 20),
+        "sens_termica": ("Feels like (°C)", -10, 45, 18),
+        "humedad_relativa": ("Relative humidity (%)", 0, 100, 65),
     }
 
     vals = {}
@@ -387,7 +387,7 @@ def _render_rain_predictor(bundle: dict) -> None:
         label, mn, mx, default = label_map[feat]
         vals[feat] = cols[i % 3].slider(label, min_value=mn, max_value=mx, value=default, key=f"pred_{feat}")
 
-    if st.button("Predir", key="rain_predict_btn", use_container_width=True):
+    if st.button("Predict", key="rain_predict_btn", use_container_width=True):
         import numpy as np
         row = np.array([[vals.get(f, 0) for f in features]])
         row_scaled = scaler.transform(row)
@@ -399,8 +399,8 @@ def _render_rain_predictor(bundle: dict) -> None:
                 f"<div style='text-align:center;padding:1rem;border-radius:12px;"
                 f"background:rgba(99,102,241,0.2);border:1px solid #818cf8;'>"
                 f"<span style='font-size:2rem;'>🌧️</span><br>"
-                f"<span style='font-size:1.3rem;font-weight:700;color:#a5b4fc;'>PLOURÀ</span><br>"
-                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat: {prob_plou:.1%}</span></div>",
+                f"<span style='font-size:1.3rem;font-weight:700;color:#a5b4fc;'>RAIN EXPECTED</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probability: {prob_plou:.1%}</span></div>",
                 unsafe_allow_html=True,
             )
         else:
@@ -408,8 +408,8 @@ def _render_rain_predictor(bundle: dict) -> None:
                 f"<div style='text-align:center;padding:1rem;border-radius:12px;"
                 f"background:rgba(13,148,136,0.2);border:1px solid #2dd4bf;'>"
                 f"<span style='font-size:2rem;'>☀️</span><br>"
-                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>NO PLOURÀ</span><br>"
-                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat de pluja: {prob_plou:.1%}</span></div>",
+                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>NO RAIN EXPECTED</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Rain probability: {prob_plou:.1%}</span></div>",
                 unsafe_allow_html=True,
             )
 
@@ -419,16 +419,16 @@ def section_aemet(bucket: str) -> None:
 
     col_ml, col_chart = st.columns(2, gap="large")
     with col_ml:
-        st.markdown("##### Model de predicció de pluja (Logistic Regression)")
+        st.markdown("##### Rain Prediction Model (Logistic Regression)")
         if bundle and "error" in bundle:
             st.warning(bundle["error"])
-            st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres")
+            st.caption(f"Train: {bundle['n_train']:,} samples · Test: {bundle['n_test']:,} samples")
         elif bundle:
             _render_ml_panel(bundle)
         else:
-            st.info("Sense dades de train/test per entrenar el model.")
+            st.info("No train/test data to fit the model.")
     with col_chart:
-        st.markdown("##### Evolució climàtica per municipi")
+        st.markdown("##### Climate Trend by Municipality")
         _render_climate_chart(bucket)
 
     if bundle and "error" not in bundle:
@@ -436,7 +436,7 @@ def section_aemet(bucket: str) -> None:
         _render_rain_predictor(bundle)
 
 
-@st.cache_data(ttl=600, show_spinner="Entrenant model accidents GU…")
+@st.cache_data(ttl=600, show_spinner="Training accident model…")
 def _accidents_model(bucket: str):
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
@@ -459,7 +459,7 @@ def _accidents_model(bucket: str):
     if y_train is None or y_test is None or X_train.empty:
         return None
     if y_train.nunique() < 2:
-        return {"error": "El dataset de train té una sola classe.", "n_train": len(X_train), "n_test": len(X_test)}
+        return {"error": "Training dataset has only one class.", "n_train": len(X_train), "n_test": len(X_test)}
 
     common  = [c for c in X_train.columns if c in X_test.columns]
     X_train = X_train[common].fillna(0)
@@ -499,7 +499,7 @@ def _fix_enc(s: str) -> str:
 def _render_accidents_chart(bucket: str) -> None:
     df = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_by_district/")
     if df.empty:
-        st.info("Sense dades d'accidents per districte.")
+        st.info("No accident data by district.")
         return
 
     df["Nom_districte"] = df["Nom_districte"].dropna().apply(_fix_enc)
@@ -510,31 +510,31 @@ def _render_accidents_chart(bucket: str) -> None:
                    if c in df.columns]
 
     districtes = sorted(df["Nom_districte"].dropna().unique().tolist())
-    sel_dist   = st.selectbox("Districte", districtes, key="acc_dist")
+    sel_dist   = st.selectbox("District", districtes, key="acc_dist")
     df_dist    = df[df["Nom_districte"] == sel_dist]
     barris     = sorted(df_dist["Nom_barri"].dropna().unique().tolist())
-    sel_barri  = st.selectbox("Barri", barris, key="acc_barri")
+    sel_barri  = st.selectbox("Neighbourhood", barris, key="acc_barri")
 
     row = df_dist[df_dist["Nom_barri"] == sel_barri]
     if row.empty or not metric_cols:
-        st.warning("Sense dades per aquesta combinació.")
+        st.warning("No data for this combination.")
         return
 
     vals   = row[metric_cols].iloc[0]
-    df_bar = pd.DataFrame({"Mètrica": metric_cols, "Valor": [int(vals[c]) for c in metric_cols]})
+    df_bar = pd.DataFrame({"Metric": metric_cols, "Count": [int(vals[c]) for c in metric_cols]})
 
     chart = (
         alt.Chart(df_bar)
         .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
         .encode(
-            x=alt.X("Mètrica:N", title=None, sort=None,
+            x=alt.X("Metric:N", title=None, sort=None,
                     axis=alt.Axis(labelAngle=-30, labelColor="#94a3b8")),
-            y=alt.Y("Valor:Q", title="Total",
+            y=alt.Y("Count:Q", title="Total",
                     axis=alt.Axis(labelColor="#94a3b8", titleColor="#cbd5e1")),
-            color=alt.Color("Mètrica:N",
+            color=alt.Color("Metric:N",
                             scale=alt.Scale(scheme="tealblues"),
                             legend=None),
-            tooltip=["Mètrica:N", "Valor:Q"],
+            tooltip=["Metric:N", "Count:Q"],
         )
         .properties(height=300, background="#0f172a",
                     title=f"{sel_barri}  ·  {sel_dist}")
@@ -545,19 +545,19 @@ def _render_accidents_chart(bucket: str) -> None:
 
 
 def _render_accidents_predictor(bundle: dict) -> None:
-    st.markdown("##### Predictor d'accident greu")
+    st.markdown("##### Serious Accident Predictor")
     model    = bundle.get("model")
     scaler   = bundle.get("scaler")
     features = bundle.get("features", [])
     if not model or not features:
-        st.info("Model no disponible.")
+        st.info("Model not available.")
         return
 
     label_map = {
-        "NK_Any":  ("Any",        2020, 2025, 2024),
-        "Mes_any": ("Mes (1–12)",    1,   12,    6),
-        "Dia_mes": ("Dia (1–31)",    1,   31,   15),
-        "Hora_dia":("Hora (0–23)",   0,   23,   12),
+        "NK_Any":  ("Year",        2020, 2025, 2024),
+        "Mes_any": ("Month (1–12)",    1,   12,    6),
+        "Dia_mes": ("Day (1–31)",    1,   31,   15),
+        "Hora_dia":("Hour (0–23)",   0,   23,   12),
     }
 
     vals    = {}
@@ -567,7 +567,7 @@ def _render_accidents_predictor(bundle: dict) -> None:
         label, mn, mx, default = label_map[feat]
         vals[feat] = cols[i].slider(label, min_value=mn, max_value=mx, value=default, key=f"acc_pred_{feat}")
 
-    if st.button("Predir", key="acc_predict_btn", use_container_width=True):
+    if st.button("Predict", key="acc_predict_btn", use_container_width=True):
         import numpy as np
         row        = np.array([[vals.get(f, 0) for f in features]])
         y_pred     = model.predict(scaler.transform(row))[0]
@@ -578,8 +578,8 @@ def _render_accidents_predictor(bundle: dict) -> None:
                 f"<div style='text-align:center;padding:1rem;border-radius:12px;"
                 f"background:rgba(220,38,38,0.18);border:1px solid #ef4444;'>"
                 f"<span style='font-size:2rem;'>🚨</span><br>"
-                f"<span style='font-size:1.3rem;font-weight:700;color:#fca5a5;'>ACCIDENT GREU</span><br>"
-                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat: {prob_greu:.1%}</span></div>",
+                f"<span style='font-size:1.3rem;font-weight:700;color:#fca5a5;'>SERIOUS ACCIDENT</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probability: {prob_greu:.1%}</span></div>",
                 unsafe_allow_html=True,
             )
         else:
@@ -587,8 +587,8 @@ def _render_accidents_predictor(bundle: dict) -> None:
                 f"<div style='text-align:center;padding:1rem;border-radius:12px;"
                 f"background:rgba(13,148,136,0.18);border:1px solid #2dd4bf;'>"
                 f"<span style='font-size:2rem;'>✅</span><br>"
-                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>ACCIDENT LLEU / NO GREU</span><br>"
-                f"<span style='color:#94a3b8;font-size:0.9rem;'>Probabilitat accident greu: {prob_greu:.1%}</span></div>",
+                f"<span style='font-size:1.3rem;font-weight:700;color:#5eead4;'>MINOR / NO ACCIDENT</span><br>"
+                f"<span style='color:#94a3b8;font-size:0.9rem;'>Serious accident probability: {prob_greu:.1%}</span></div>",
                 unsafe_allow_html=True,
             )
 
@@ -598,18 +598,18 @@ def section_accidents_gu(bucket: str) -> None:
 
     col_ml, col_chart = st.columns(2, gap="large")
     with col_ml:
-        st.markdown("##### Model de predicció d'accident greu (Logistic Regression + balanced)")
+        st.markdown("##### Serious Accident Prediction Model (Logistic Regression + balanced)")
         if bundle and "error" in bundle:
             st.warning(bundle["error"])
-            st.caption(f"Train: {bundle['n_train']:,} mostres · Test: {bundle['n_test']:,} mostres")
+            st.caption(f"Train: {bundle['n_train']:,} samples · Test: {bundle['n_test']:,} samples")
         elif bundle:
             cc = bundle.get("class_counts", {})
-            st.caption(f"Distribució train → No greu (0): {cc.get(0, '?'):,} · Greu (1): {cc.get(1, '?'):,}")
-            _render_ml_panel(bundle, labels=["No greu", "Greu"])
+            st.caption(f"Train distribution → Non-serious (0): {cc.get(0, '?'):,} · Serious (1): {cc.get(1, '?'):,}")
+            _render_ml_panel(bundle, labels=["Non-serious", "Serious"])
         else:
-            st.info("Sense dades de train/test per entrenar el model.")
+            st.info("No train/test data to fit the model.")
     with col_chart:
-        st.markdown("##### Accidents per districte i barri")
+        st.markdown("##### Accidents by District and Neighbourhood")
         _render_accidents_chart(bucket)
 
     if bundle and "error" not in bundle:
@@ -620,7 +620,7 @@ def section_accidents_gu(bucket: str) -> None:
 def section_tomtom(bucket: str) -> None:
     df = load_parquet_prefix(bucket, "TOMTOM/")
     if df.empty:
-        st.info("Sense dades TomTom. Executa el pipeline d'exploitation.")
+        st.info("No TomTom data. Run the exploitation pipeline.")
         return
 
     need = ["point_name", "avg_current_speed_kmh", "avg_free_flow_speed_kmh",
@@ -639,10 +639,10 @@ def section_tomtom(bucket: str) -> None:
     congested   = int((df["avg_congestion_pct"] > 20).sum())
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Punts monitoritzats", f"{n_points}")
-    k2.metric("Congestió mitja",     f"{avg_cong:.1f} %")
-    k3.metric("Punt més congestió",  worst, delta=f"{worst_pct:.0f} %", delta_color="inverse")
-    k4.metric("Punts > 20 % cong.",  f"{congested}")
+    k1.metric("Monitored points",       f"{n_points}")
+    k2.metric("Average congestion",     f"{avg_cong:.1f} %")
+    k3.metric("Most congested point",   worst, delta=f"{worst_pct:.0f} %", delta_color="inverse")
+    k4.metric("Points > 20% congestion", f"{congested}")
 
     st.markdown("<div style='margin-top:0.75rem;'></div>", unsafe_allow_html=True)
 
@@ -655,7 +655,7 @@ def section_tomtom(bucket: str) -> None:
     )
 
     bar_free = base.mark_bar(color="#1e293b", height=18).encode(
-        x=alt.X("avg_free_flow_speed_kmh:Q", title="Velocitat (km/h)",
+        x=alt.X("avg_free_flow_speed_kmh:Q", title="Speed (km/h)",
                 axis=alt.Axis(labelColor="#64748b", titleColor="#94a3b8", gridColor="#1e293b")),
     )
 
@@ -664,7 +664,7 @@ def section_tomtom(bucket: str) -> None:
         color=alt.Color("avg_congestion_pct:Q",
             scale=alt.Scale(domain=[0, 15, 30, 45],
                             range=["#2dd4bf", "#a3e635", "#fb923c", "#ef4444"]),
-            title="Congestió (%)",
+            title="Congestion (%)",
             legend=alt.Legend(
                 labelColor="#cbd5e1", titleColor="#e2e8f0",
                 orient="bottom", direction="horizontal",
@@ -672,11 +672,11 @@ def section_tomtom(bucket: str) -> None:
             ),
         ),
         tooltip=[
-            alt.Tooltip("point_name:N",              title="Punt"),
-            alt.Tooltip("avg_current_speed_kmh:Q",   title="Velocitat actual (km/h)",  format=".0f"),
-            alt.Tooltip("avg_free_flow_speed_kmh:Q", title="Velocitat lliure (km/h)",  format=".0f"),
-            alt.Tooltip("avg_speed_diff_kmh:Q",      title="Diferència (km/h)",        format=".0f"),
-            alt.Tooltip("avg_congestion_pct:Q",      title="Congestió (%)",            format=".1f"),
+            alt.Tooltip("point_name:N",              title="Point"),
+            alt.Tooltip("avg_current_speed_kmh:Q",   title="Current speed (km/h)",    format=".0f"),
+            alt.Tooltip("avg_free_flow_speed_kmh:Q", title="Free-flow speed (km/h)",  format=".0f"),
+            alt.Tooltip("avg_speed_diff_kmh:Q",      title="Difference (km/h)",       format=".0f"),
+            alt.Tooltip("avg_congestion_pct:Q",      title="Congestion (%)",          format=".1f"),
         ],
     )
 
@@ -695,9 +695,9 @@ def section_tomtom(bucket: str) -> None:
             height=max(320, n_points * 28),
             background="#0f172a",
             title=alt.TitleParams(
-                "Velocitat actual vs. velocitat lliure per punt TomTom",
+                "Current speed vs. free-flow speed by TomTom point",
                 color="#f1f5f9", fontSize=14,
-                subtitle="Barra fosca = velocitat lliure (referència)  ·  Barra acolorida = velocitat actual  ·  % = congestió",
+                subtitle="Dark bar = free-flow speed (reference)  ·  Coloured bar = current speed  ·  % = congestion",
                 subtitleColor="#64748b", subtitleFontSize=11,
             ),
         )
@@ -710,7 +710,7 @@ def section_daily_incidents(bucket: str) -> None:
     import html as htmllib
     df = load_parquet_prefix(bucket, "incidents/daily_incidents/")
     if df.empty:
-        st.info("Sense incidents disponibles. Executa el pipeline d'exploitation.")
+        st.info("No incidents available. Run the exploitation pipeline.")
         return
 
     df = df.copy()
@@ -719,7 +719,7 @@ def section_daily_incidents(bucket: str) -> None:
         df = df.sort_values("data_ts", ascending=False)
 
     total = len(df)
-    st.caption(f"{total} incident{'s' if total != 1 else ''} carregat{'s' if total != 1 else ''}")
+    st.caption(f"{total} incident{'s' if total != 1 else ''} loaded")
 
     for _, row in df.iterrows():
         titol     = str(row.get("titol", "") or "").strip()
@@ -750,7 +750,7 @@ def section_daily_incidents(bucket: str) -> None:
             link_btn = (
                 f'<a href="{htmllib.escape(link)}" target="_blank" rel="noopener" '
                 f'style="color:#5eead4;font-size:0.82rem;text-decoration:none;margin-top:0.5rem;display:inline-block;">'
-                f'Veure post ↗</a>'
+                f'View post ↗</a>'
             )
 
         st.html(f"""
@@ -782,11 +782,11 @@ def section_realtime_parking() -> None:
         occupied = max(0, total - free)
         cols = st.columns(3)
         with cols[0]:
-            st.metric("Places lliures", f"{free:,}")
+            st.metric("Free spaces", f"{free:,}")
         with cols[1]:
-            st.metric("Places ocupades", f"{occupied:,}")
+            st.metric("Occupied spaces", f"{occupied:,}")
         with cols[2]:
-            st.metric("Sensors actius", f"{total:,}")
+            st.metric("Active sensors", f"{total:,}")
 
     _live_widget()
 
@@ -805,19 +805,18 @@ def main() -> None:
     pfx_trams_map = _env("TRAMS_MAP_PREFIX", "ajuntament_bcn/trams_map/")
 
     _section_title(
-        "Places de pàrking en temps real",
-        "Comptador en viu des de Kafka, agregat a Redis (db=1) i refrescat cada 5 s.",
+        "Real-time parking spaces",
+        "Live counter from Kafka, aggregated in Redis (db=1) and refreshed every 5 s.",
     )
     with st.container(border=True):
         section_realtime_parking()
 
     _section_title(
-        "Mapa de congestió de trams",
-        "Tres fonts: **warm path · trams** (Kafka directe, refresc 2 min), "
-        "**cold path** (exploitation-zone, refresc horari) i "
-        "**warm path · IoT** (sensors sintètics, refresc 2 min). "
-        "La geometria dels trams és dades de referència estàtiques llegides una "
-        "vegada del cold store.",
+        "Tram congestion map",
+        "Three sources: **warm path · trams** (Kafka direct, 2-min refresh), "
+        "**cold path** (exploitation-zone, hourly refresh) and "
+        "**warm path · IoT** (synthetic sensors, 2-min refresh). "
+        "Tram geometry is static reference data loaded once from the cold store.",
     )
     with st.container(border=True):
         tab_warm, tab_cold, tab_iot = st.tabs([
@@ -828,8 +827,8 @@ def main() -> None:
 
         with tab_warm:
             st.caption(
-                "Origen: Kafka `trams_congestion` · congestió en memòria, refresc cada 2 min · "
-                "geometria: `exploitation-zone/ajuntament_bcn/trams_map/` (caché 1 h)."
+                "Source: Kafka `trams_congestion` · congestion held in memory, 2-min refresh · "
+                "geometry: `exploitation-zone/ajuntament_bcn/trams_map/` (1-h cache)."
             )
             start_trams_consumer()
 
@@ -840,9 +839,9 @@ def main() -> None:
 
                 if snapshot.empty:
                     st.info(
-                        "Esperant dades de Kafka (`trams_congestion`). "
-                        "El consumidor fa replay del topic en arrencar; "
-                        "triga uns segons la primera vegada."
+                        "Waiting for Kafka data (`trams_congestion`). "
+                        "The consumer replays the topic on startup; "
+                        "this may take a few seconds the first time."
                     )
                     return
 
@@ -868,14 +867,14 @@ def main() -> None:
 
         with tab_cold:
             st.caption(
-                "Origen: `s3://exploitation-zone/ajuntament_bcn/trams_map/` · "
-                "materialitzat per `exploitation_zone.py` (Spark) · refresc horari."
+                "Source: `s3://exploitation-zone/ajuntament_bcn/trams_map/` · "
+                "materialized by `exploitation_zone.py` (Spark) · hourly refresh."
             )
             render_trams_map(cached_load_trams_map(exploitation_bucket, pfx_trams_map))
 
         with tab_iot:
             st.caption(
-                "Origen: Kafka `Sensors-IoT` · sensors sintètics de trànsit · refresc cada 2 min."
+                "Source: Kafka `Sensors-IoT` · synthetic traffic sensors · 2-min refresh."
             )
             start_iot_consumer()
 
@@ -886,8 +885,8 @@ def main() -> None:
                 snap = get_iot_snapshot()
                 if snap.empty:
                     st.info(
-                        "Sense dades de `Sensors-IoT`. "
-                        "Comprova que el contenidor `sensor-bcn` està en marxa."
+                        "No data from `Sensors-IoT`. "
+                        "Check that the `sensor-bcn` container is running."
                     )
                     return
 
@@ -901,7 +900,7 @@ def main() -> None:
                     lambda v: _iot_colors.get(str(v).lower(), [120, 120, 120])
                 )
 
-                st.metric("Sensors actius", len(snap))
+                st.metric("Active sensors", len(snap))
 
                 layer = pdk.Layer(
                     "ScatterplotLayer",
@@ -921,8 +920,8 @@ def main() -> None:
                         tooltip={
                             "html": (
                                 "<b>{sensor_id}</b><br/>{ubicacion}<br/>"
-                                "Velocitat: {avg_speed_kmh} km/h<br/>"
-                                "Congestió: {congestion_level}"
+                                "Speed: {avg_speed_kmh} km/h<br/>"
+                                "Congestion: {congestion_level}"
                             )
                         },
                     ),
@@ -931,30 +930,30 @@ def main() -> None:
 
             _iot_widget()
 
-    _section_title("Càmeres de trànsit")
+    _section_title("Traffic cameras")
     with st.container(border=True):
         section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
 
-    _section_title("AEMET — Clima i predicció de pluja")
+    _section_title("AEMET — Climate & Rain Prediction")
     with st.container(border=True):
         section_aemet(exploitation_bucket)
 
-    _section_title("Accidents GU — Predicció i estadístiques per zona")
+    _section_title("Accidents GU — Prediction & Stats by Area")
     with st.container(border=True):
         section_accidents_gu(exploitation_bucket)
 
-    _section_title("TomTom — Velocitat i congestió en temps real")
+    _section_title("TomTom — Speed & Congestion")
     with st.container(border=True):
         section_tomtom(exploitation_bucket)
 
-    _section_title("Incidents de trànsit")
+    _section_title("Traffic incidents")
     with st.container(border=True):
         section_daily_incidents(exploitation_bucket)
 
     st.markdown(
         """
         <div style="text-align:center; margin-top:2.5rem; padding-top:1.5rem; border-top:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:0.85rem;">
-            BDM · capa de presentació
+            BDM · presentation layer
         </div>
         """,
         unsafe_allow_html=True,

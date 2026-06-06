@@ -29,13 +29,13 @@ CONGESTION_COLORS: dict[int, list[int]] = {
     6: [150, 20, 20],    # tallat
 }
 CONGESTION_LABELS: dict[int, str] = {
-    0: "Sense dades",
-    1: "Molt fluid",
-    2: "Fluid",
-    3: "Dens",
-    4: "Molt dens",
-    5: "Congestió",
-    6: "Tallat",
+    0: "No data",
+    1: "Free flow",
+    2: "Flowing",
+    3: "Dense",
+    4: "Very dense",
+    5: "Congested",
+    6: "Blocked",
 }
 
 # Centro aproximado de Barcelona para el encuadre inicial.
@@ -77,7 +77,7 @@ def prepare_map_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out["nivell_text"] = out["nivell"].map(CONGESTION_LABELS)
     if "descripcio" not in out.columns:
         out["descripcio"] = None
-    out["descripcio"] = out["descripcio"].fillna("(sense nom)")
+    out["descripcio"] = out["descripcio"].fillna("(no name)")
     id_col = "id_tram" if "id_tram" in out.columns else out.columns[0]
     out["tram_id_text"] = out[id_col].astype(str)
     return out
@@ -107,8 +107,8 @@ def render_trams_map(df: pd.DataFrame) -> None:
     data = prepare_map_dataframe(df)
     if data.empty:
         st.info(
-            "Aún no hay datos de mapa de trams. Ejecuta ingestión (`relacio_trams` + "
-            "`trams_congestion`) → trusted → `exploitation_zone.py`, que escribe "
+            "No trams map data yet. Run ingestion (`relacio_trams` + "
+            "`trams_congestion`) → trusted → `exploitation_zone.py`, which writes "
             "`ajuntament_bcn/trams_map/`."
         )
         return
@@ -118,9 +118,9 @@ def render_trams_map(df: pd.DataFrame) -> None:
     en_congestio = int((data["nivell"] >= 5).sum())
     tallats = int((data["nivell"] == 6).sum())
     c1, c2, c3 = st.columns(3)
-    c1.metric("Trams al mapa", f"{total:,}")
-    c2.metric("En congestió (≥5)", f"{en_congestio:,}")
-    c3.metric("Tallats", f"{tallats:,}")
+    c1.metric("Trams on map", f"{total:,}")
+    c2.metric("Congested (≥5)", f"{en_congestio:,}")
+    c3.metric("Blocked", f"{tallats:,}")
 
     layer = pdk.Layer(
         "PathLayer",
@@ -139,7 +139,7 @@ def render_trams_map(df: pd.DataFrame) -> None:
         "html": (
             "<b>Tram {tram_id_text}</b><br/>"
             "{descripcio}<br/>"
-            "Estat: <b>{nivell_text}</b> ({nivell})"
+            "Status: <b>{nivell_text}</b> ({nivell})"
         ),
         "style": {"backgroundColor": "#0f172a", "color": "#e2e8f0", "fontSize": "0.8rem"},
     }
