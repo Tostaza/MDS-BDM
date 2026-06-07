@@ -1,21 +1,6 @@
 from __future__ import annotations
-
-"""
-Utilidades para la capa "trusted": leer **tablas Delta**, aplicar reglas de calidad de datos
-con Spark y volver a escribir **Delta**. Pensado para rutas locales o S3A (MinIO, SeaweedFS, etc.).
-
-Nota d'arquitectura: el bronze persistent (persistent-landing-zone) ja són taules Delta
-escrites des d'Airflow amb delta-rs (paquet deltalake). Aquí llegim com a Delta perquè
-el log transaccional (_delta_log) ens diu quins fitxers Parquet són vigents, si en lloc
-d'això llegíssim com a Parquet pla, podríem absorbir fitxers orfes d'overwrites anteriors i
-acabar amb files duplicades. L'escriptura també és Delta perquè així la capa Gold
-(exploitation) hereta el mateix avantatge: ACID, ``overwrite`` segur, time-travel.
-Manetin traçabilitat en tot moment de les transaccions que fem amb els fitxers.
-"""
-
 from dataclasses import dataclass
 from typing import Optional, Sequence
-
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType
@@ -24,65 +9,67 @@ from pyspark.sql.types import StringType
 @dataclass
 class CleanOptions:
     """
-    Configura les passes de clean --> `Cleaner.clean()`.
-    Si no pases res, s'usan els valorss  per default 
+    Configura les passes de neteja --> `Cleaner.clean()`.
+    Si no es passa res, s'utilitzen els valors per defecte.
     """
 
-    # Quitar espacios al inicio/fin en columnas de texto (StringType).
+    # Elimina espais al principi/final de les columnes de text (StringType).
     trim_strings: bool = True
-    # Tras el trim (si aplica), convertir cadena vacía "" en NULL de Spark.
+    # Després del trim (si aplica), converteix cadena buida "" en NULL de Spark.
     empty_string_as_null: bool = True
-    # Eliminar filas duplicadas (mismo contenido en las columnas consideradas).
+    # Elimina files duplicades (mateix contingut a les columnes considerades).
     drop_duplicates: bool = True
-    # Si es None, Spark compara todas las columnas para decidir duplicado.
-    # Si pones p. ej. ("id", "dia"), dos filas con mismo id+dia se consideran duplicado.
+    # Si és None, Spark compara totes les columnes per decidir duplicat.
+    # Si poses p. ex. ("id", "dia"), dues files amb mateix id+dia es consideren duplicat.
     duplicate_subset: Optional[Sequence[str]] = None
-    # Si True, borra filas donde TODAS las columnas son NULL (filas “vacías”).
+    # Si True, esborra files on TOTES les columnes són NULL (files "buides").
     drop_rows_all_null: bool = False
 
 
 
 class Cleaner:
     """
-    Orquesta lectura Delta → transformaciones de limpieza → escritura Delta.
-    Recibe la SparkSession ya configurada (master, S3A, extensión Delta, etc.); esta clase no crea el cluster.
+    Orquestra Lectura Delta → transformacions de neteja → Escriptura Delta.
+    Rep la SparkSession configurada (master, S3A, extensió Delta, etc.).
     """
 
     def __init__(self, spark: SparkSession) -> None:
-        # Guardamos la sesión para read/write y para exponerla si hace falta fuera.
+        # Guardem la sessió per a read/write i per exposar-la si cal fora.
         self._spark = spark
 
     @property
     def spark(self) -> SparkSession:
-        """Acceso de solo lectura a la misma SparkSession inyectada en el constructor."""
+        """Accés de només lectura a la mateixa SparkSession injectada al constructor."""
         return self._spark
 
     def read_delta(self, path: str) -> DataFrame:
-        """
-        Carga una tabla Delta en un DataFrame lazy (no ejecuta hasta una acción).
-
-        `path` puede ser ruta local (`file:///...`) o objeto store (`s3a://bucket/prefijo/`).
-        El reader Delta consulta ``_delta_log`` para devolver SOLO los ficheros parquet vigentes
-        (no los orfes de overwrites previos).
-        """
+        """Llegeix el DataFrame amb Delta."""
         return self._spark.read.format("delta").load(path)
+    
+    def write_delta(self, df: DataFrame, path: str, mode: str = "overwrite", partition_by: Optional[Sequence[str]] = None) -> None:
+        """Escriu el DataFrame com a taula Delta a path. Sanititza noms de columnes abans d'escriure."""
+        df = self._sanitize_column_names(df)
+        writer = df.write.format("delta").mode(mode).option("overwriteSchema", "true")
+        if partition_by:
+            writer = writer.partitionBy(*partition_by)
+        writer.save(path)
 
     def clean(self, df: DataFrame, options: Optional[CleanOptions] = None) -> DataFrame:
         """
-        Aplica las reglas de `CleanOptions` en orden: strings → filas vacías → dropna → deduplicar.
-        Devuelve un nuevo plan lógico (DataFrame); hasta que no hagas count/write, Spark no ejecuta.
-        Bàsciamente lo que hace es aplicar las opciones de limpieza que se le pasan, aplicadas al dataframe.
+        Aplica les regles de CleanOptions en ordre: strings → files buides → deduplicar.
+        Retorna un nou pla lògic (DataFrame); fins que no es fa count/write, Spark no executa.
+        Bàsicament aplica les opcions de neteja passades al dataframe.
         """
         opts = options or CleanOptions()
         out = df
 
-        # 1) Normalizar columnas de texto según flags (trim y/o "" → NULL).
+        # 1) Normalitza columnes de text segons els flags (trim i/o "" → NULL).
         if opts.trim_strings or opts.empty_string_as_null:
             out = self._normalize_string_columns(out, trim=opts.trim_strings, empty_as_null=opts.empty_string_as_null)
 
-        # 2) Opcional: quitar filas donde no queda ningún dato (todas las celdas NULL).
+        # 2) Opcional: elimina files on no queda cap dada (totes les cel·les NULL).
         if opts.drop_rows_all_null:
-            # Construimos una condición OR: al menos una columna debe ser no nula.
+            # Construïm una condició OR: almenys una columna ha de ser no nula.
             cond = None
             for name in out.columns:
                 c = F.col(name).isNotNull()
@@ -90,7 +77,7 @@ class Cleaner:
             if cond is not None:
                 out = out.filter(cond)
 
-        # 4) Opcional: deduplicar (por todas las columnas o solo por `duplicate_subset`).
+        # 3) Opcional: deduplicar (per totes les columnes o només per `duplicate_subset`).
         if opts.drop_duplicates:
             subset = list(opts.duplicate_subset) if opts.duplicate_subset else None
             out = out.dropDuplicates(subset=subset)
@@ -99,7 +86,7 @@ class Cleaner:
 
     @staticmethod
     def _sanitize_column_names(df: DataFrame) -> DataFrame:
-        """Substitueix caracters invalids per Delta ( ,;{}()\n\t=) per guio baix."""
+        """Substitueix caràcters invàlids per Delta ( ,;{}()\n\t=) per guió baix."""
         import re
         invalid = re.compile(r'[ ,;{}\(\)\n\t=]+')
         out = df
@@ -109,32 +96,10 @@ class Cleaner:
                 out = out.withColumnRenamed(field.name, clean)
         return out
 
-    def write_delta(
-        self,
-        df: DataFrame,
-        path: str,
-        mode: str = "overwrite",
-        partition_by: Optional[Sequence[str]] = None,
-    ) -> None:
-        """Escriu el DataFrame com a taula Delta a path. Sanititza noms de columnes abans d'escriure."""
-        df = self._sanitize_column_names(df)
-        writer = df.write.format("delta").mode(mode).option("overwriteSchema", "true")
-        if partition_by:
-            writer = writer.partitionBy(*partition_by)
-        writer.save(path)
-
-    def clean_delta(
-        self,
-        input_path: str,
-        output_path: str,
-        options: Optional[CleanOptions] = None,
-        write_mode: str = "overwrite",
-        partition_by: Optional[Sequence[str]] = None,
-    ) -> DataFrame:
+    def clean_delta(self, input_path: str, output_path: str, options: Optional[CleanOptions] = None, write_mode: str = "overwrite",
+        partition_by: Optional[Sequence[str]] = None) -> DataFrame:
         """
-        Atajo: lee Delta desde `input_path`, limpia con `clean()` y escribe Delta en `output_path`.
-        El `return` es el DataFrame limpio por si quisieramos hacer en algun punto del codigo `.count()`, tests o un paso siguiente.
-        La escritura en disco ya se dispara aquí (acción de write).
+        Llegeix Delta des de input_path, neteja amb clean() i escriu Delta a output_path.
         """
         df = self.read_delta(input_path)
         cleaned = self.clean(df, options=options)
@@ -144,19 +109,17 @@ class Cleaner:
     @staticmethod
     def _normalize_string_columns(df: DataFrame, *, trim: bool, empty_as_null: bool) -> DataFrame:
         """
-        Solo toca columnas cuyo tipo es StringType en el schema.
-        Recorre el schema para no intentar trim/nullif en números o structs; evita errores de tipos.
-        Bàsicamente lo que hace es mira si en el catalogo de options hay que trimar o nullifar las columnas de texto.
-        En el caso que si haya que aplicar ese tratamiento, lo hace para todas las columnas de texto del dataframe.
+        Només toca columnes el tipus de les quals és StringType en l'esquema.
+        Recorre l'esquema per no intentar trim/nullif en números o structs; evita errors de types.
         """
         out = df
         for field in out.schema.fields:
             if not isinstance(field.dataType, StringType):
                 continue
             col = F.col(field.name)
-            # Primero opcionalmente recortamos espacios; si trim=False, usamos la columna tal cual.
+            # Opcionalment retallem espais; si trim=False, usem la columna tal qual.
             expr = F.trim(col) if trim else col
-            # nullif(expr, "") devuelve NULL cuando el resultado es cadena vacía.
+            # when(expr == "", None) retorna NULL quan el resultat és cadena buida.
             if empty_as_null:
                 expr = F.when(expr == "", None).otherwise(expr)
             out = out.withColumn(field.name, expr)

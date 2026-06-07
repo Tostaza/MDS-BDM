@@ -1,9 +1,7 @@
 """
 Punt d'entrada: llegeix Delta de persistent-landing-zone i escriu a trusted-zone.
 Pipelines especials: transit_posts, sct/traffic_incidents, aemet, accidents GU.
-Execucio: python trusted-zone/trusted_zone.py
-Env vars: S3A_ENDPOINT, S3A_ACCESS_KEY, S3A_SECRET_KEY, SPARK_MASTER,
-          PERSISTENT_BUCKET, TRUSTED_BUCKET, DATA_PREFIX, SCT_FILTER_BARCELONA_ONLY
+Env vars: S3A_ENDPOINT, S3A_ACCESS_KEY, S3A_SECRET_KEY, SPARK_MASTER, PERSISTENT_BUCKET, TRUSTED_BUCKET, DATA_PREFIX, SCT_FILTER_BARCELONA_ONLY
 """
 from __future__ import annotations
 import os
@@ -12,9 +10,9 @@ import traceback
 from pathlib import Path
 from pyspark.sql import SparkSession
 
+# Per poder trobar els imports dels diferents fitxers que faré servir.
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_WORK = _SCRIPT_DIR.parent
-
 for _p in (_REPO_WORK, _SCRIPT_DIR):
     _s = str(_p)
     if _s not in sys.path:
@@ -23,35 +21,25 @@ for _p in (_REPO_WORK, _SCRIPT_DIR):
 from cleaner import CleanOptions, Cleaner  # noqa: E402
 from spark_client import SparkClient  # noqa: E402
 from trusted_paths import relative_path_under_base, trusted_target_uri  # noqa: E402
-from trusted_pipelines import (  # noqa: E402
-    clean_options_for_accidents_gu,
-    partition_roots_by_pipeline,
-    process_aemet_predictions_parquet,
-    process_sct_traffic_incidents_parquet,
-    process_transit_posts,
-)
+from trusted_pipelines import (clean_options_for_accidents_gu, partition_roots_by_pipeline, process_aemet_predictions_parquet, process_sct_traffic_incidents_parquet, process_transit_posts) # noqa: E402
 from traffic_cameras_media import process_traffic_cameras_persistent_to_trusted  # noqa: E402
+import boto3
+from botocore.exceptions import ClientError
 
 
 def _env(name: str, default: str) -> str:
+    """Per carregar les variables del .env"""
     value = os.environ.get(name)
     return value if value is not None and value != "" else default
 
 def ensure_bucket_exists(bucket: str) -> None:
-    """Crea el bucket a SeaweedFS si no existeix."""
-    import boto3
-    from botocore.exceptions import ClientError
+    """Crea el bucket amb name (bucket:str) que es passa per parametre a SeaweedFS si no existeix."""
 
     endpoint = _env("S3A_ENDPOINT", _env("S3_ENDPOINT", "http://seaweedfs:8333"))
     access_key = _env("S3A_ACCESS_KEY", _env("AWS_ACCESS_KEY_ID", "admin"))
     secret_key = _env("S3A_SECRET_KEY", _env("AWS_SECRET_ACCESS_KEY", "admin"))
-
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key,
-    )
+    s3 = boto3.client("s3", endpoint_url=endpoint, aws_access_key_id=access_key, aws_secret_access_key=secret_key)
+    
     try:
         s3.head_bucket(Bucket=bucket)
         print(f"Bucket '{bucket}' exists.")
@@ -59,16 +47,14 @@ def ensure_bucket_exists(bucket: str) -> None:
         s3.create_bucket(Bucket=bucket)
         print(f"Bucket '{bucket}' created.")
 
-
 def _register_local_pyfiles_for_udf_workers(spark: SparkSession) -> None:
-    """Distribueix cleaner.py i trusted_pipelines.py als workers per als UDFs."""
+    """Distribueix cleaner.py i trusted_pipelines.py als workers per als UDFs. Passar als workers tots els udf i així trobin les funcions i ho puguin executar."""
     zone = Path(__file__).resolve().parent
     sc = spark.sparkContext
     for filename in ("cleaner.py", "trusted_pipelines.py"):
         path = zone / filename
         if path.is_file():
             sc.addPyFile(str(path))
-
 
 def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> SparkClient:
     """Crea un SparkClient configurat per S3A/SeaweedFS."""
@@ -80,32 +66,23 @@ def build_spark_session(app_name: str = "trusted-zone-landing-to-trusted") -> Sp
         secret_key=_env("S3A_SECRET_KEY", "admin"),
     )
 
-
-"""
-Genera la URL del origin on anirem a buscar-ne les diferents dades i els diferents parquet files.
-"""
 def landing_base_uri() -> str:
-    """URI base del bucket de lectura."""
+    """Genera la URL del origin on anirem a buscar-ne les diferents dades i els diferents parquet files. EN AQUEST CAS PERSITENT-LANDING-ZONE."""
     bucket = _env("PERSISTENT_BUCKET", "persistent-landing-zone")
     prefix = _env("DATA_PREFIX", "").strip("/")
     base = f"s3a://{bucket}"
     return f"{base}/{prefix}/" if prefix else f"{base}/"
 
-"""
-Generem la URL de output, del bucket Destí. En aquest cas on guardarem les dades i la informació.
-"""
 def trusted_base_uri() -> str:
-    """URI base del bucket d'escriptura."""
+    """Generem la URL de output, del bucket Destí. En aquest cas on guardarem les dades i la informació. EN AQUES CAS TRUSTED ZONE"""
     bucket = _env("TRUSTED_BUCKET", "trusted-zone")
     prefix = _env("DATA_PREFIX", "").strip("/")
     base = f"s3a://{bucket}"
     return f"{base}/{prefix}/" if prefix else f"{base}/"
 
-"""
-Per paths a buckets, hadoop necessiten que siguin absoluts, per tant amb un slice al final /. 
-"""
 def _java_s3a_path(hpath_ctor, uri: str):
-    """Construeix un Path Hadoop S3A garantint barra final a l'arrel del bucket."""
+    """ Construeix un Path Hadoop S3A garantint barra final a l'arrel del bucket.
+        Per paths a buckets, hadoop necessiten que siguin absoluts, per tant amb un slice al final /. """
     s = (uri or "").strip()
     if not s:
         raise ValueError("URI buida per a Path de Hadoop")
@@ -115,18 +92,13 @@ def _java_s3a_path(hpath_ctor, uri: str):
             s = f"s3a://{after_scheme}/"
     return hpath_ctor(s)
 
-"""
-Em permetrà poder detectar diferencies entre diferents carpetes, és a dir dins de folders si tinc subfolders com any = 2024
-em detecta aquestes subfolders filtrades per any.
-"""
 def _is_hive_partition_dir(name: str) -> bool:
-    """Retorna True si el nom de carpeta segueix el patro clau=valor de Hive."""
+    """ Retorna True si el nom de carpeta segueix el patro clau=valor de Hive.
+        Em permetrà poder detectar diferencies entre diferents carpetes, és a dir dins de folders si tinc subfolders com any = 2024
+        em detecta aquestes subfolders filtrades per any.
+    """
     return "=" in name and not name.lower().endswith(".parquet")
 
-
-"""
-
-"""
 def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
     """
     Recorre base_uri i retorna les URIs que Spark pot llegir com a dataset Parquet/Delta.
@@ -140,25 +112,21 @@ def discover_parquet_roots(spark: SparkSession, base_uri: str) -> list[str]:
     hadoop_conf.set("fs.s3a.endpoint", _env("S3A_ENDPOINT", "http://seaweedfs:8333"))
     hadoop_conf.set("fs.s3a.access.key", _env("S3A_ACCESS_KEY", "admin"))
     hadoop_conf.set("fs.s3a.secret.key", _env("S3A_SECRET_KEY", "admin"))
-
     hadoop_conf.set("fs.s3a.path.style.access", "true")
     hadoop_conf.set("fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     hadoop_conf.set("fs.s3a.connection.ssl.enabled", "false")
     hadoop_conf.set("fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
-    # Aqui construim el que seria la base_url per tal de saber el punt de partida
-    # Aqui sera doncs la url incial a persistent-landing-zone.
-    base_path = _java_s3a_path(hpath, base_uri)
-    # Aqui tindrem el flat 'file system' de S3 per poder accedir-ne a carpetes i els seus continguts.
-    fs = base_path.getFileSystem(hadoop_conf)
+    base_path = _java_s3a_path(hpath, base_uri) # Aqui sera doncs la url incial a persistent-landing-zone.
+    fs = base_path.getFileSystem(hadoop_conf)   # Aqui tindrem el flat name de S3 per poder accedir-ne a carpetes i els seus continguts.
 
     if not fs.exists(base_path):
         print(f"Aviso: la ruta de escaneo no existe: {base_uri}")
         return []
 
-    """
-    Serveix per trobar de tots els directoris, totes les carpetes i de aquestes tots els fitxers.
-    """
     def walk(path_str: str) -> list[str]:
+        """
+        Serveix per trobar de tots els directoris, totes les carpetes i de aquestes tots els fitxers.
+        """
         p = _java_s3a_path(hpath, path_str)
         if not fs.exists(p):
             return []
@@ -185,9 +153,8 @@ def main() -> None:
     """Orquestra persistent-landing -> trusted-zone: primer imatges (boto3), despres Spark."""
     landing_base = landing_base_uri()
     trusted_base = trusted_base_uri()
-
     ensure_bucket_exists(_env("TRUSTED_BUCKET", "trusted-zone"))
-    print("=== Fase 0: traffic_cameras (persistent-landing -> trusted-zone, imagens) ===")
+
     try:
         n_img = process_traffic_cameras_persistent_to_trusted()
         print(f"=== Fase 0 terminada: {n_img} imagen(es) procesada(s) ===")
@@ -197,7 +164,7 @@ def main() -> None:
 
     spark_client = build_spark_session()
     spark = spark_client.connect()
-    _register_local_pyfiles_for_udf_workers(spark) # Serveix per passar als workers tots els udf i així trobin les funcions i ho puguin executar.
+    _register_local_pyfiles_for_udf_workers(spark)
     try:
         cleaner = Cleaner(spark)
         options = CleanOptions()
@@ -205,12 +172,10 @@ def main() -> None:
         roots = discover_parquet_roots(spark, landing_base)
         print(roots)
         if not roots:
-            print(f"Aviso: no se encontraron carpetas Parquet bajo: {landing_base}")
+            print(f"Avis: no se han trobat carpetas Parquet sota: {landing_base}")
         else:
             lb = landing_base.rstrip("/")
-            transit_roots, sct_roots, aemet_roots, default_roots = partition_roots_by_pipeline(
-                landing_base, roots
-            )
+            transit_roots, sct_roots, aemet_roots, default_roots = partition_roots_by_pipeline(landing_base, roots)
 
             if transit_roots:
                 try:
@@ -244,6 +209,7 @@ def main() -> None:
                     out = trusted_target_uri(trusted_base, rel)
                     rel_lower = rel.lower()
                     if rel_lower.startswith("ajuntament_bcn/accidents_gu"):
+                        # Si es accidents_gu tenim numero_expeident, element clau, ID per el cual mirarem no duplicates mes rapid.
                         df_ag = cleaner.read_delta(root.rstrip("/") + "/")
                         opts_ag = clean_options_for_accidents_gu(df_ag)
                         cleaned_ag = cleaner.clean(df_ag, options=opts_ag)

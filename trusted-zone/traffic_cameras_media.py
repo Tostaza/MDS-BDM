@@ -1,97 +1,61 @@
 """
-Módulo **traffic_cameras (capa trusted, sin Parquet)**.
-
-Qué hace (flujo medalla, solo binarios):
-    1. Lista objetos en el bucket ``PERSISTENT_BUCKET`` (p. ej. ``persistent-landing-zone``)
-       bajo prefijos tipo ``…/traffic_cameras/images/raw/`` (respeta ``DATA_PREFIX``).
-    2. Filtra extensiones de imagen (.gif, .png, .jpg, …).
-    3. Descarga bytes con boto3, aplica **Pillow** (brillo, nitidez, contraste; GIF animado
-       frame a frame) y opcionalmente redimensiona si ``CAMERA_MAX_EDGE`` > 0.
-    4. Sube el resultado a ``TRUSTED_BUCKET`` bajo ``…/traffic_cameras/images/trusted/{timestamp}/{archivo}``.
-
-Se invoca desde ``trusted_zone.main()`` en **Fase 0** (antes de Spark) y desde
-``run_cameras_images.py`` para pruebas aisladas.
-
-Variables de entorno (opcionales):
-    CAMERA_MEDIA_ENABLED       ``false`` para desactivar (por defecto ``true``).
-    CAMERA_MEDIA_RAW_PREFIX    Ruta bajo el bucket persistente sin nombre de bucket; si no
-                               se define, se prueban variantes de mayúsculas en ``traffic_cameras``.
-    PERSISTENT_BUCKET, TRUSTED_BUCKET, DATA_PREFIX
-    S3A_* o S3_ENDPOINT + AWS_* (mismo criterio que ``ensure_bucket_exists`` en ``trusted_zone``).
-    CAMERA_BRIGHTNESS / CAMERA_SHARPNESS / CAMERA_CONTRAST / CAMERA_MAX_EDGE
+Modul traffic_cameras (capa trusted, sense Parquet).
+Flux:
+    1. Llista imatges del bucket persistent sota traffic_cameras/images/raw/.
+    2. Filtra per extensió (.gif, .png, .jpg, etc...).
+    3. Millora cada imatge amb Pillow (brillo, nitidesa, contrast; GIF frame a frame).
+    4. Puja el resultat a trusted-zone sota traffic_cameras/images/trusted/.
 """
 
 from __future__ import annotations
-
 import io
 import os
 import re
-
+import boto3
+from PIL import Image, ImageEnhance, ImageSequence
 
 def _env(name: str, default: str) -> str:
-    """Lee variable de entorno; si falta o está vacía, devuelve ``default``."""
+    """Llegeix variable d'entorn, si no existeix retorna el default."""
     v = os.environ.get(name)
     return v if v is not None and v != "" else default
 
-
 def _truthy(name: str, default: str = "true") -> bool:
-    """Interpreta variable de entorno como booleano (1/true/yes/on)."""
+    """Variable d'entorn com a boolea."""
     return _env(name, default).lower() in ("1", "true", "yes", "on")
 
-
 def _float_env(name: str, default: str) -> float:
-    """Variable de entorno como float; si no es válida, usa ``default``."""
+    """Variable d'entorn com a float."""
     try:
         return float(_env(name, default))
     except ValueError:
         return float(default)
 
-
 def _int_env(name: str, default: str) -> int:
-    """Variable de entorno como entero; si no es válida, usa ``default``."""
+    """Variable d'entorn com a enter."""
     try:
         return int(_env(name, default))
     except ValueError:
         return int(default)
 
-
 def _s3_client():
-    """
-    Connectivitat del client S3, per fer la connexió.
-    """
-    import boto3
-
+    """Client boto3 apuntant a SeaweedFS (o S3 real)."""
     endpoint = _env("S3A_ENDPOINT", _env("S3_ENDPOINT", "http://seaweedfs:8333"))
     key = _env("S3A_ACCESS_KEY", _env("AWS_ACCESS_KEY_ID", "admin"))
     secret = _env("S3A_SECRET_KEY", _env("AWS_SECRET_ACCESS_KEY", "admin"))
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=key,
-        aws_secret_access_key=secret,
-    )
-
+    return boto3.client("s3", endpoint_url=endpoint, aws_access_key_id=key, aws_secret_access_key=secret)
 
 def _with_data_prefix(subpath: str, data_prefix: str) -> str:
-    """
-    Antepone DATA_PREFIX a un subpath y devuelve prefijo S3 terminado en /.
-    Ej.: ("traffic_cameras/images/raw", "proyecto") → proyecto/traffic_cameras/images/raw/.
-    """
+    """Afegeix DATA_PREFIX al subpath i assegura barra final."""
     p = (data_prefix or "").strip("/")
     s = subpath.strip("/")
     return f"{p}/{s}/" if p else f"{s}/"
 
 def _camera_trusted_prefix(data_prefix: str) -> str:
-    """Prefijo S3 de destino en trusted-zone."""
+    """Prefix S3 de destí a trusted-zone."""
     return _with_data_prefix("traffic_cameras/images/raw", data_prefix)
 
-
 def _raw_prefixes_to_scan(data_prefix: str) -> list[str]:
-    """
-    Prefixos S3 a provar (S3 és case-sensitive). Per defecte traffic_cameras + variants típiques.
-    Si CAMERA_MEDIA_RAW_PREFIX està definit, només s’usa aquest (més DATA_PREFIX si cal).
-    Mètode generalització per si de cas canviessin el nom el servei d'on consumim les dades.
-    """
+    """Prefixos S3 a escanejar. Prova variants de capitalització perquè S3 és case-sensitive."""
     override = _env("CAMERA_MEDIA_RAW_PREFIX", "").strip().strip("/")
     if override:
         return [_with_data_prefix(override, data_prefix)]
@@ -127,16 +91,12 @@ _IMAGE_EXT = (
 
 
 def _is_image_key(key: str) -> bool:
-    """Devuelve True si la clave S3 termina en una extensión de imagen admitida."""
+    """Retorna True si la clau S3 té extensió d'imatge admesa."""
     k = key.lower()
     return any(k.endswith(ext) for ext in _IMAGE_EXT)
 
-
-"""
-Extreu el path després del que ve de 7raw/ --> name de la imatge, per prograpagarla a altres capes amb el mateix nom.
-"""
 def _relative_after_images_raw(key: str) -> str | None:
-    """Extreu ``timestamp/fitxer`` després de ``.../images/raw/`` (sense importar majúscules)."""
+    """Extreu el path relatiu després de .../images/raw/."""
     m = re.search(r"(?i)/images/raw/(.+)$", key)
     if m:
         return m.group(1).lstrip("/")
@@ -144,14 +104,10 @@ def _relative_after_images_raw(key: str) -> str | None:
 
 
 def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallback: str) -> str:
-    """
-    Construye la clave de salida en trusted (siempre bajo …/images/trusted/) + el nom de la imatge que recupea de la funcio anterior.
-    Corrige extensión ``.pmng`` errónea a ``.png`` en la clave de destino.
-    """
+    """Construeix la clau de sortida a trusted. A mes a mes, corregeix .pmng → .png."""
     rel = _relative_after_images_raw(source_key)
     if rel is None:
         rel = rel_fallback
-    # Només el nom de fitxer, sense subcarpeta de timestamp
     filename = rel.split("/")[-1]
     out = f"{trusted_prefix}{filename}"
     if out.lower().endswith(".pmng"):
@@ -160,12 +116,7 @@ def _normalize_trusted_out_key(trusted_prefix: str, source_key: str, rel_fallbac
 
 
 def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max_edge: int):
-    """
-    Aplica mejoras Pillow a un frame PIL (RGB): brillo, nitidez, contraste y resize opcional.
-    Parámetros ``brightness`` / ``sharpness`` / ``contrast`` son factores (>1 intensifica).
-    """
-    from PIL import Image, ImageEnhance
-
+    """Aplica brillo, nitidesa i contrast a un frame PIL. Redimensiona si cal."""
     if im.mode not in ("RGB", "RGBA"):
         im = im.convert("RGBA") if "A" in im.mode else im.convert("RGB")
     if im.mode == "RGBA":
@@ -186,12 +137,7 @@ def _enhance_frame(im, brightness: float, sharpness: float, contrast: float, max
 
 
 def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, contrast: float, max_edge: int) -> bytes:
-    """
-    Decodifica bytes de imagen, mejora y vuelve a codificar a bytes (GIF/JPEG/PNG/WebP según formato).
-    GIF con varios frames: procesa cada frame y reensambla el GIF.
-    """
-    from PIL import Image, ImageSequence
-
+    """Descodifica, millora i recodifica la imatge. Per GIFs animats processa frame a frame."""
     src = io.BytesIO(raw)
     im = Image.open(src)
     fmt = (im.format or "PNG").upper()
@@ -203,7 +149,6 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
             durations.append(im.info.get("duration", 100))
             frames_out.append(_enhance_frame(frame, brightness, sharpness, contrast, max_edge))
         out = io.BytesIO()
-        # AQUI ANIREM AFEGINT LA SEQÜENCIA DE FRAMES.
         frames_out[0].save(
             out,
             format="GIF",
@@ -215,7 +160,6 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
         )
         return out.getvalue()
 
-    # SERIE LA PART DEL ELSE, QUAN NO ES UN GIF I PER TANT TRACTEM LA IMATGE PER SI SOLA.
     single = _enhance_frame(im, brightness, sharpness, contrast, max_edge)
     out = io.BytesIO()
     if fmt in ("JPEG", "JPG"):
@@ -230,11 +174,11 @@ def _bytes_to_enhanced_image(raw: bytes, brightness: float, sharpness: float, co
 
 
 def process_traffic_cameras_persistent_to_trusted() -> int:
-
+    """Processa les imatges de càmeres de persistent-landing a trusted-zone."""
     if not _truthy("CAMERA_MEDIA_ENABLED", "true"):
         print("traffic_cameras (imatges): CAMERA_MEDIA_ENABLED=false, s'omet.")
         return 0
-
+    
     pillow_ok = False
     try:
         from PIL import Image  # noqa: F401

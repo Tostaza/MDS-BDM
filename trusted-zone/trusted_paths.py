@@ -14,7 +14,6 @@ from __future__ import annotations
 def relative_path_under_base(base_uri: str, root_uri: str) -> str:
     """
     Retorna el segment de ruta de root_uri relatiu a base_uri (sense barres als extrems).
-
     Exemple: base s3a://bucket/prefix, root s3a://bucket/prefix/a/b/ -> a/b.
     """
     b = base_uri.rstrip("/")
@@ -28,9 +27,9 @@ def relative_path_under_base(base_uri: str, root_uri: str) -> str:
 
 def trusted_target_uri(trusted_base_uri: str, relative: str) -> str:
     """
-    Construeix la URI s3a:// de destí a trusted a partir de la base i un sufix relatiu.
-
+    Construeix la URI s3a:// de destí a trusted a partir de la base i un sufix relatiu que li passem.
     Si relative és buit, retorna la base amb barra final.
+    trusted_target_uri("s3a://trusted-zone/aemet/", "daily_weather") -> "s3a://trusted-zone/aemet/daily_weather/"
     """
     t = trusted_base_uri.rstrip("/")
     if relative:
