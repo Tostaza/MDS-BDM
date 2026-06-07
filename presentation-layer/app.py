@@ -1,38 +1,35 @@
 """
-Dashboard (capa presentació): mapa de congestió de trams + places de parking en temps real.
+Dashboard (capa presentacio): mapa de congestio de trams + places de parking en temps real.
 """
-
 from __future__ import annotations
-
 import os
-
 import streamlit as st
 import altair as alt
 import pandas as pd
-
-from data_access import (
-    get_s3_object_bytes,
-    list_traffic_camera_gallery_objects,
-    list_traffic_camera_gallery_sites,
-    load_parquet_prefix,
-    load_trams_map,
-)
+from data_access import (get_s3_object_bytes, list_traffic_camera_gallery_objects, list_traffic_camera_gallery_sites, load_parquet_prefix, load_trams_map)
 from hot_path import read_parking_counters, start_parking_consumer
-from warm_path_trams import (
-    get_iot_snapshot,
-    get_trams_snapshot,
-    start_iot_consumer,
-    start_trams_consumer,
-)
+from warm_path_trams import (get_iot_snapshot, get_trams_snapshot, start_iot_consumer, start_trams_consumer)
 from map_view import render_trams_map
+import io
+import chromadb
+from PIL import Image
+import html as htmllib
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+from ultralytics import YOLO
+from sentence_transformers import SentenceTransformer
 
 
 def _env(name: str, default: str) -> str:
+    """Llegeix variable d'entorn; retorna default si es buida o absent."""
     v = os.environ.get(name)
     return v if v is not None and v != "" else default
 
 
 def _inject_dashboard_css() -> None:
+    """Injecta el CSS global del dashboard."""
     st.markdown(
         """
         <style>
@@ -122,7 +119,7 @@ def _inject_dashboard_css() -> None:
         [data-baseweb="menu"]   *:not(svg):not(path) { color: #f1f5f9 !important; }
         [data-baseweb="menu"] { background-color: #0f172a !important; }
         [role="option"]:hover { background-color: rgba(94,234,212,0.12) !important; }
-        /* Mètriques st.metric */
+        /* Metriques st.metric */
         [data-testid="stMetricValue"]  > div { color: #f1f5f9 !important; }
         [data-testid="stMetricLabel"]  > div { color: #94a3b8 !important; }
         [data-testid="stMetricDelta"]  > div { color: #5eead4 !important; }
@@ -131,8 +128,8 @@ def _inject_dashboard_css() -> None:
         unsafe_allow_html=True,
     )
 
-
 def _hero() -> None:
+    """Renderitza la capcalera principal del dashboard."""
     st.markdown(
         """
         <div style="
@@ -152,8 +149,8 @@ def _hero() -> None:
         unsafe_allow_html=True,
     )
 
-
 def _section_title(title: str, subtitle: str | None = None) -> None:
+    """Renderitza el titol de seccio amb subtitol opcional."""
     sub = (
         f'<p style="margin:0.4rem 0 0 0; font-size:0.92rem; color:#94a3b8; line-height:1.45;">{subtitle}</p>'
         if subtitle
@@ -169,24 +166,23 @@ def _section_title(title: str, subtitle: str | None = None) -> None:
         unsafe_allow_html=True,
     )
 
-
 @st.cache_data(ttl=300, show_spinner="Loading trams map from S3…")
 def cached_load_trams_map(bucket: str, prefix: str):
+    """Carrega el mapa de trams des de S3 amb cache de 5 minuts."""
     try:
         return load_trams_map(bucket, prefix)
     except Exception as e:
         st.error(f"Error loading trams_map from S3: {e}")
         return None
 
-
 def _fmt_camera_site(site_key: str) -> str:
+    """Formata el site_key de camera com a text llegible."""
     import re
     s = site_key.strip()
     s = re.sub(r"_-_", " — ", s)
     s = s.replace("_", " ")
     s = re.sub(r"\b([a-z]{1,3})-(\d+)\b", lambda m: f"{m.group(1).upper()}-{m.group(2)}", s)
     return s.strip().title()
-
 
 _YOLO_VEHICLE_CLASSES = {
     1: "Bicycle",
@@ -196,26 +192,21 @@ _YOLO_VEHICLE_CLASSES = {
     7: "Truck",
 }
 
-
 @st.cache_resource(show_spinner="Loading CLIP model…")
 def _load_clip_model():
-    from sentence_transformers import SentenceTransformer
+    """Carrega el model CLIP (cache per sessio)."""
     return SentenceTransformer("clip-ViT-B-32")
 
 
 @st.cache_resource(show_spinner="Loading YOLO model…")
 def _load_yolo_model():
-    from ultralytics import YOLO
+    """Carrega el model YOLO (cache per sessio)."""
     return YOLO("yolov8n.pt")
 
-
 def _detect_vehicles(image_bytes: bytes, model) -> tuple[bytes, dict]:
-    import io
-    from PIL import Image
-
+    """Executa YOLO sobre una imatge i retorna la imatge anotada i els comptadors per classe."""
     img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     results = model(img, verbose=False)[0]
-
     counts: dict[str, int] = {label: 0 for label in _YOLO_VEHICLE_CLASSES.values()}
     for box in results.boxes:
         cls_id = int(box.cls[0])
@@ -228,8 +219,8 @@ def _detect_vehicles(image_bytes: bytes, model) -> tuple[bytes, dict]:
     pil_img.save(buf, format="JPEG", quality=90)
     return buf.getvalue(), counts
 
-
 def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
+    """Seccio de visualitzacio de cameres de transit amb deteccio de vehicles opcional."""
     sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
     if not sites:
         st.info("No camera images available.")
@@ -240,7 +231,7 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
     col_sel, col_toggle = st.columns([3, 1])
     with col_sel:
         selected = st.selectbox(
-            "Càmera",
+            "Camera",
             options=sites,
             format_func=lambda s: labels[s],
             label_visibility="collapsed",
@@ -303,10 +294,7 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
 
 @st.cache_data(ttl=600, show_spinner="Training AEMET model…")
 def _aemet_model(bucket: str):
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-    from sklearn.preprocessing import StandardScaler
-
+    """Entrena el model de prediccio de pluja amb les dades AEMET de exploitation."""
     df_train = load_parquet_prefix(bucket, "aemet/ml_rain_train/")
     df_test = load_parquet_prefix(bucket, "aemet/ml_rain_test/")
     if df_train.empty or df_test.empty:
@@ -348,8 +336,8 @@ def _aemet_model(bucket: str):
         "features":  common,
     }
 
-
 def _render_ml_panel(bundle: dict, labels: list | None = None) -> None:
+    """Renderitza les metriques del model ML i la matriu de confusio."""
     acc, pre, rec, f1 = bundle["accuracy"], bundle["precision"], bundle["recall"], bundle["f1"]
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Accuracy",  f"{acc:.3f}")
@@ -382,8 +370,8 @@ def _render_ml_panel(bundle: dict, labels: list | None = None) -> None:
     st.altair_chart(chart, use_container_width=True)
     st.caption(f"Train: {bundle['n_train']:,} samples · Test: {bundle['n_test']:,} samples · Logistic Regression")
 
-
 def _render_climate_chart(bucket: str) -> None:
+    """Renderitza el grafic de tendencia climatica per municipi."""
     df = load_parquet_prefix(bucket, "aemet/climate_by_municipio/")
     if df.empty:
         st.info("No climate_by_municipio data available.")
@@ -440,8 +428,8 @@ def _render_climate_chart(bucket: str) -> None:
     )
     st.altair_chart(chart, use_container_width=True)
 
-
 def _render_rain_predictor(bundle: dict) -> None:
+    """Widget interactiu per predir si plourà donades condicions meteorologiques."""
     st.markdown("##### Rain Predictor")
     model = bundle.get("model")
     scaler = bundle.get("scaler")
@@ -467,7 +455,6 @@ def _render_rain_predictor(bundle: dict) -> None:
         vals[feat] = cols[i % 3].slider(label, min_value=mn, max_value=mx, value=default, key=f"pred_{feat}")
 
     if st.button("Predict", key="rain_predict_btn", use_container_width=True):
-        import numpy as np
         row = np.array([[vals.get(f, 0) for f in features]])
         row_scaled = scaler.transform(row)
         pred = model.predict(row_scaled)[0]
@@ -492,10 +479,9 @@ def _render_rain_predictor(bundle: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-
 def section_aemet(bucket: str) -> None:
+    """Seccio AEMET: model de pluja + tendencia climatica per municipi."""
     bundle = _aemet_model(bucket)
-
     col_ml, col_chart = st.columns(2, gap="large")
     with col_ml:
         st.markdown("##### Rain Prediction Model (Logistic Regression)")
@@ -514,13 +500,9 @@ def section_aemet(bucket: str) -> None:
         st.markdown("<div style='margin-top:1.25rem;border-top:1px solid rgba(94,234,212,0.15);padding-top:0.5rem;'></div>", unsafe_allow_html=True)
         _render_rain_predictor(bundle)
 
-
 @st.cache_data(ttl=600, show_spinner="Training accident model…")
 def _accidents_model(bucket: str):
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-    from sklearn.preprocessing import StandardScaler
-
+    """Entrena el model de prediccio d'accidents greus amb les dades d'accidents GU."""
     df_train = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_ml_train/")
     df_test  = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_ml_test/")
     if df_train.empty or df_test.empty:
@@ -550,7 +532,6 @@ def _accidents_model(bucket: str):
     model.fit(scaler.fit_transform(X_train), y_train)
     y_pred = model.predict(scaler.transform(X_test))
 
-    # Distribució de classes al train per mostrar-la al panel
     class_counts = y_train.value_counts().to_dict()
 
     return {
@@ -567,15 +548,15 @@ def _accidents_model(bucket: str):
         "features":     common,
     }
 
-
 def _fix_enc(s: str) -> str:
+    """Corregeix codificacio latin-1 mal interpretada com a UTF-8."""
     try:
         return s.encode("latin-1").decode("utf-8")
     except (UnicodeEncodeError, UnicodeDecodeError):
         return s
 
-
 def _render_accidents_chart(bucket: str) -> None:
+    """Renderitza el grafic d'accidents per districte i barri."""
     df = load_parquet_prefix(bucket, "ajuntament_bcn/accidents_gu_by_district/")
     if df.empty:
         st.info("No accident data by district.")
@@ -622,8 +603,8 @@ def _render_accidents_chart(bucket: str) -> None:
     )
     st.altair_chart(chart, use_container_width=True)
 
-
 def _render_accidents_predictor(bundle: dict) -> None:
+    """Widget interactiu per predir si un accident sera greu."""
     st.markdown("##### Serious Accident Predictor")
     model    = bundle.get("model")
     scaler   = bundle.get("scaler")
@@ -633,10 +614,10 @@ def _render_accidents_predictor(bundle: dict) -> None:
         return
 
     label_map = {
-        "NK_Any":  ("Year",        2020, 2025, 2024),
-        "Mes_any": ("Month (1–12)",    1,   12,    6),
-        "Dia_mes": ("Day (1–31)",    1,   31,   15),
-        "Hora_dia":("Hour (0–23)",   0,   23,   12),
+        "NK_Any":  ("Year", 2020, 2025, 2024),
+        "Mes_any": ("Month (1–12)", 1, 12, 6),
+        "Dia_mes": ("Day (1–31)", 1, 31, 15),
+        "Hora_dia":("Hour (0–23)", 0, 23, 12),
     }
 
     vals    = {}
@@ -648,10 +629,10 @@ def _render_accidents_predictor(bundle: dict) -> None:
 
     if st.button("Predict", key="acc_predict_btn", use_container_width=True):
         import numpy as np
-        row        = np.array([[vals.get(f, 0) for f in features]])
-        y_pred     = model.predict(scaler.transform(row))[0]
-        proba      = model.predict_proba(scaler.transform(row))[0]
-        prob_greu  = float(proba[1]) if len(proba) > 1 else float(proba[0])
+        row = np.array([[vals.get(f, 0) for f in features]])
+        y_pred = model.predict(scaler.transform(row))[0]
+        proba = model.predict_proba(scaler.transform(row))[0]
+        prob_greu = float(proba[1]) if len(proba) > 1 else float(proba[0])
         if y_pred == 1:
             st.markdown(
                 f"<div style='text-align:center;padding:1rem;border-radius:12px;"
@@ -671,10 +652,9 @@ def _render_accidents_predictor(bundle: dict) -> None:
                 unsafe_allow_html=True,
             )
 
-
 def section_accidents_gu(bucket: str) -> None:
+    """Seccio accidents GU: model de prediccio + grafic per districte i barri."""
     bundle = _accidents_model(bucket)
-
     col_ml, col_chart = st.columns(2, gap="large")
     with col_ml:
         st.markdown("##### Serious Accident Prediction Model (Logistic Regression + balanced)")
@@ -695,8 +675,8 @@ def section_accidents_gu(bucket: str) -> None:
         st.markdown("<div style='margin-top:1.25rem;border-top:1px solid rgba(94,234,212,0.15);padding-top:0.5rem;'></div>", unsafe_allow_html=True)
         _render_accidents_predictor(bundle)
 
-
 def section_tomtom(bucket: str) -> None:
+    """Seccio TomTom: velocitat actual vs velocitat lliure per punt de mesura."""
     df = load_parquet_prefix(bucket, "TOMTOM/")
     if df.empty:
         st.info("No TomTom data. Run the exploitation pipeline.")
@@ -710,7 +690,6 @@ def section_tomtom(bucket: str) -> None:
     df["avg_free_flow_speed_kmh"] = pd.to_numeric(df["avg_free_flow_speed_kmh"], errors="coerce").fillna(0)
     df = df.sort_values("avg_congestion_pct", ascending=False).reset_index(drop=True)
 
-    # KPIs ràpids
     n_points    = len(df)
     avg_cong    = df["avg_congestion_pct"].mean()
     worst       = df.iloc[0]["point_name"] if n_points > 0 else "—"
@@ -725,7 +704,6 @@ def section_tomtom(bucket: str) -> None:
 
     st.markdown("<div style='margin-top:0.75rem;'></div>", unsafe_allow_html=True)
 
-    # Capa 1: barra grisa de referència (velocitat lliure)
     base = alt.Chart(df).encode(
         y=alt.Y("point_name:N",
                 sort=alt.EncodingSortField(field="avg_congestion_pct", order="descending"),
@@ -784,9 +762,9 @@ def section_tomtom(bucket: str) -> None:
     )
     st.altair_chart(chart, use_container_width=True)
 
-
 def section_daily_incidents(bucket: str) -> None:
-    import html as htmllib
+    """Seccio d'incidents de transit del dia (obres SCT + posts de transit)."""
+
     df = load_parquet_prefix(bucket, "incidents/daily_incidents/")
     if df.empty:
         st.info("No incidents available. Run the exploitation pipeline.")
@@ -851,11 +829,8 @@ def section_daily_incidents(bucket: str) -> None:
         </div>
         """)
 
-
 def section_camera_search() -> None:
-    import io
-    import chromadb
-    from PIL import Image
+    """Cerca la camera mes similar a una imatge pujada per l'usuari via CLIP + ChromaDB."""
 
     chroma_host = os.environ.get("CHROMA_HOST", "chromadb")
     chroma_port = int(os.environ.get("CHROMA_PORT", "8000"))
@@ -894,12 +869,7 @@ def section_camera_search() -> None:
             model     = _load_clip_model()
             query_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
             embedding = model.encode(query_img).tolist()
-
-            results   = collection.query(
-                query_embeddings=[embedding],
-                n_results=1,
-                include=["metadatas", "distances"],
-            )
+            results   = collection.query(query_embeddings=[embedding], n_results=1, include=["metadatas", "distances"])
 
         meta       = results["metadatas"][0][0]
         dist       = results["distances"][0][0]
@@ -920,8 +890,8 @@ def section_camera_search() -> None:
         except Exception:
             st.caption(f"Image not available: {meta['s3_key']}")
 
-
 def section_realtime_parking() -> None:
+    """Seccio de places de parking en temps real (Kafka + Redis)."""
     start_parking_consumer()
 
     @st.fragment(run_every="5s")
@@ -938,8 +908,8 @@ def section_realtime_parking() -> None:
 
     _live_widget()
 
-
 def main() -> None:
+    """Punt d'entrada del dashboard Streamlit."""
     st.set_page_config(
         page_title="BDM — Dashboard",
         layout="wide",
@@ -1113,7 +1083,6 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
-
 
 if __name__ == "__main__":
     main()

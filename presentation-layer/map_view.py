@@ -1,31 +1,16 @@
-"""
-Widget de mapa (tipo Google Maps de tráfico) para la capa de presentación.
-
-Pinta cada **tram** de Barcelona como una polilínea sobre un mapa oscuro, coloreada
-según su último nivel de congestió (`estatActual`, 0–6). Usa **pydeck / deck.gl**, que
-viene incluido con Streamlit (sin dependencias nuevas ni API key: basemap CARTO oscuro
-que encaja con el tema del dashboard).
-
-La tabla de entrada (`ajuntament_bcn/trams_map/`) la materializa ``exploitation-zone``
-(`materialize_trams_map`): una fila por tram con la geometría completa (`path`) y el
-snapshot de congestió más reciente. Aquí NO hay joins ni ETL, solo render.
-"""
-
+"""Widget de mapa de congestio de trams per a la capa de presentacio."""
 from __future__ import annotations
-
 import pandas as pd
 import pydeck as pdk
 import streamlit as st
 
-# Escala oficial del Ajuntament para `estatActual` → color RGB (verde fluido → rojo tallat).
-# 0 se trata como «sense dades» (gris) para no fingir información que no tenemos.
 CONGESTION_COLORS: dict[int, list[int]] = {
     0: [120, 120, 120],  # sense dades
     1: [26, 188, 94],    # molt fluid
     2: [120, 200, 60],   # fluid
     3: [245, 200, 40],   # dens
     4: [240, 140, 30],   # molt dens
-    5: [230, 60, 45],     # congestió
+    5: [230, 60, 45],    # congestio
     6: [150, 20, 20],    # tallat
 }
 CONGESTION_LABELS: dict[int, str] = {
@@ -38,32 +23,22 @@ CONGESTION_LABELS: dict[int, str] = {
     6: "Blocked",
 }
 
-# Centro aproximado de Barcelona para el encuadre inicial.
 _BCN_LAT, _BCN_LON = 41.3900, 2.1700
 
-
 def _coerce_level(value) -> int:
-    """Normaliza `estatActual` a un entero 0–6; cualquier cosa rara → 0 (sense dades)."""
+    """Normalitza estatActual a un enter 0-6; qualsevol valor invalid retorna 0."""
     try:
         lvl = int(round(float(value)))
     except (TypeError, ValueError):
         return 0
     return lvl if lvl in CONGESTION_COLORS else 0
 
-
 def prepare_map_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Deja el DataFrame listo para `PathLayer`: filas con `path` válido (≥2 puntos),
-    columna `color` (RGB) y etiquetas legibles para el tooltip.
-
-    Filtra trams sin geometría utilizable porque deck.gl necesita al menos dos vértices
-    para trazar una línea (un único punto no se vería).
-    """
+    """Prepara el DataFrame per a PathLayer: filtra paths invàlids i afegeix color i etiquetes."""
     if df is None or df.empty or "path" not in df.columns:
         return pd.DataFrame()
 
     out = df.copy()
-    # `path` puede llegar como ndarray/lista anidada (Parquet → pandas); normaliza a lista.
     out["path"] = out["path"].apply(
         lambda p: [list(pt) for pt in p] if p is not None and len(p) >= 2 else None
     )
@@ -82,9 +57,8 @@ def prepare_map_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     out["tram_id_text"] = out[id_col].astype(str)
     return out
 
-
 def _legend_html() -> str:
-    """Leyenda de colores reutilizando el look de `pill-badge` del CSS del dashboard."""
+    """Genera el HTML de la llegenda de colors del mapa."""
     items = "".join(
         f'<span style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0.6rem 0.4rem 0;">'
         f'<span style="width:14px;height:14px;border-radius:3px;background:rgb({r},{g},{b});'
@@ -94,14 +68,8 @@ def _legend_html() -> str:
     )
     return f'<div style="display:flex;flex-wrap:wrap;margin-top:0.6rem;">{items}</div>'
 
-
 def render_trams_map(df: pd.DataFrame) -> None:
-    """
-    Renderiza el mapa de congestió de trams.
-
-    `df` es lo que devuelve ``data_access.load_trams_map`` (una fila por tram). Si está
-    vacío, muestra una pista para ejecutar el pipeline en lugar de un mapa en blanco.
-    """
+    """Renderitza el mapa de congestio de trams amb pydeck PathLayer."""
     if df is None:
         return
     data = prepare_map_dataframe(df)
@@ -113,7 +81,6 @@ def render_trams_map(df: pd.DataFrame) -> None:
         )
         return
 
-    # Métricas rápidas del snapshot (congestió real = niveles 5 y 6).
     total = len(data)
     en_congestio = int((data["nivell"] >= 5).sum())
     tallats = int((data["nivell"] == 6).sum())
@@ -121,19 +88,7 @@ def render_trams_map(df: pd.DataFrame) -> None:
     c1.metric("Trams on map", f"{total:,}")
     c2.metric("Congested (≥5)", f"{en_congestio:,}")
     c3.metric("Blocked", f"{tallats:,}")
-
-    layer = pdk.Layer(
-        "PathLayer",
-        data=data,
-        get_path="path",
-        get_color="color",
-        width_min_pixels=3,
-        width_scale=1,
-        cap_rounded=True,
-        joint_rounded=True,
-        pickable=True,
-        auto_highlight=True,
-    )
+    layer = pdk.Layer("PathLayer", data=data, get_path="path", get_color="color", width_min_pixels=3, width_scale=1, cap_rounded=True, joint_rounded=True, pickable=True, auto_highlight=True)
     view_state = pdk.ViewState(latitude=_BCN_LAT, longitude=_BCN_LON, zoom=12, pitch=0)
     tooltip = {
         "html": (

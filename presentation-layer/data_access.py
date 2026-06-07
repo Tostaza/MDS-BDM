@@ -1,59 +1,32 @@
-"""
-I/O del dashboard sobre S3/SeaweedFS (bucket de explotación): lectura Parquet e imágenes.
-
-No contiene joins ni transformaciones ETL; esas operaciones viven en ``exploitation-zone/`` (Spark).
-"""
-
+"""I/O del dashboard sobre S3/SeaweedFS: lectura Parquet i imatges de la zona d'explotacio."""
 from __future__ import annotations
-
 import os
-
 import pandas as pd
-
+import boto3
+import s3fs
+import pyarrow.parquet as pq
 
 def _env(name: str, default: str) -> str:
-    """Devuelve ``os.environ[name]`` si está definido y no vacío; si no, ``default``."""
+    """Llegeix variable d'entorn; retorna default si es buida o absent."""
     v = os.environ.get(name)
     return v if v is not None and v != "" else default
 
-
 def s3_storage_options() -> dict:
-    """Opciones de autenticación y endpoint para ``pandas.read_parquet`` sobre ``s3://``."""
-    return {
-        "key": _env("AWS_ACCESS_KEY_ID", "admin"),
-        "secret": _env("AWS_SECRET_ACCESS_KEY", "admin"),
-        "client_kwargs": {"endpoint_url": _env("S3_ENDPOINT", "http://seaweedfs:8333")},
-    }
-
+    """Opcions d'autenticacio i endpoint per a pandas.read_parquet sobre s3://."""
+    return {"key": _env("AWS_ACCESS_KEY_ID", "admin"), "secret": _env("AWS_SECRET_ACCESS_KEY", "admin"), "client_kwargs": {"endpoint_url": _env("S3_ENDPOINT", "http://seaweedfs:8333")}}
 
 def traffic_cameras_gallery_prefix(data_prefix: str) -> str:
-    """
-    Prefijo S3 dentro del bucket exploitation donde ``exploitation_zone`` escribió la galería.
-
-    Estructura: ``{DATA_PREFIX}/traffic_cameras/gallery/`` (o sin prefijo si ``DATA_PREFIX`` vacío).
-    """
+    """Retorna el prefix S3 de la galeria de cameres dins del bucket d'explotacio."""
     p = (data_prefix or "").strip("/")
     return f"{p}/traffic_cameras/gallery/" if p else "traffic_cameras/gallery/"
 
-
 def _s3_client():
-    """Cliente boto3 S3 para el dashboard (mismas variables ``S3_ENDPOINT`` / ``AWS_*`` que el compose)."""
-    import boto3
-
-    return boto3.client(
-        "s3",
-        endpoint_url=_env("S3_ENDPOINT", "http://seaweedfs:8333"),
-        aws_access_key_id=_env("AWS_ACCESS_KEY_ID", "admin"),
-        aws_secret_access_key=_env("AWS_SECRET_ACCESS_KEY", "admin"),
-    )
+    """Client boto3 per al dashboard (mateix endpoint que el compose)."""
+    return boto3.client("s3", endpoint_url=_env("S3_ENDPOINT", "http://seaweedfs:8333"), aws_access_key_id=_env("AWS_ACCESS_KEY_ID", "admin"), aws_secret_access_key=_env("AWS_SECRET_ACCESS_KEY", "admin"))
 
 
 def list_traffic_camera_gallery_sites(bucket: str, data_prefix: str = "") -> list[str]:
-    """
-    Lista «carpetas» de primer nivel bajo la galería usando ``Delimiter='/'`` en ListObjectsV2.
-
-    Cada nombre devuelto es un ``site_key`` (ubicación lógica) para el selectbox de Streamlit.
-    """
+    """Llista els site_keys (carpetes de primer nivell) de la galeria de cameres."""
     s3 = _s3_client()
     prefix = traffic_cameras_gallery_prefix(data_prefix)
     resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, Delimiter="/")
@@ -69,12 +42,7 @@ def list_traffic_camera_gallery_sites(bucket: str, data_prefix: str = "") -> lis
 
 
 def list_traffic_camera_gallery_objects(bucket: str, data_prefix: str, site_key: str) -> list[tuple[str, str]]:
-    """
-    Lista objetos S3 de una carpeta de galería para un ``site_key`` concreto.
-
-    Recorre ``ListObjectsV2`` con paginación y devuelve ``(key_s3, nombre_mostrar)``
-    ordenado por nombre de fichero (para columnas de miniaturas en Streamlit).
-    """
+    """Llista els objectes S3 d'un site_key concret; retorna [(clau_s3, nom_fitxer)]."""
     s3 = _s3_client()
     base = traffic_cameras_gallery_prefix(data_prefix) + site_key.strip("/") + "/"
     keys: list[tuple[str, str]] = []
@@ -98,17 +66,15 @@ def list_traffic_camera_gallery_objects(bucket: str, data_prefix: str, site_key:
 
 
 def get_s3_object_bytes(bucket: str, key: str) -> bytes:
-    """Descarga el objeto S3 completo en memoria (bytes) para mostrar imagen/GIF en la UI."""
+    """Descarrega un objecte S3 en memoria per mostrar-lo com a imatge a la UI."""
     s3 = _s3_client()
     return s3.get_object(Bucket=bucket, Key=key)["Body"].read()
 
 
 def load_parquet_prefix(bucket: str, prefix: str) -> pd.DataFrame:
-    """Lee todos los .parquet bajo s3://bucket/prefix/ (carpeta), excluyendo _delta_log/."""
+    """Llegeix tots els .parquet sota s3://bucket/prefix/, excloent _delta_log/."""
     so = s3_storage_options()
     p = prefix.strip("/")
-    import s3fs
-    import pyarrow.parquet as pq
     fs = s3fs.S3FileSystem(
         key=so["key"],
         secret=so["secret"],
@@ -124,13 +90,5 @@ def load_parquet_prefix(bucket: str, prefix: str) -> pd.DataFrame:
 
 
 def load_trams_map(bucket: str, prefix: str = "ajuntament_bcn/trams_map/") -> pd.DataFrame:
-    """
-    Lee la tabla map-ready de trams (una fila por tram: `id_tram`, `descripcio`, `path`,
-    `n_punts`, `estatActual`, …) que materializa ``exploitation-zone`` con
-    ``materialize_trams_map``.
-
-    Es un envoltorio fino sobre :func:`load_parquet_prefix`; existe como función propia
-    para dejar explícito el contrato que consume el widget de mapa y porque la columna
-    ``path`` vuelve como lista de ``[lon, lat]`` (deck.gl `PathLayer`), no como escalar.
-    """
+    """Llegeix la taula map-ready de trams (id_tram, path, estatActual...) de exploitation."""
     return load_parquet_prefix(bucket, prefix)
