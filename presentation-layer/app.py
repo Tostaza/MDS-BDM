@@ -8,6 +8,7 @@ import altair as alt
 import pandas as pd
 from data_access import (get_s3_object_bytes, list_traffic_camera_gallery_objects, list_traffic_camera_gallery_sites, load_parquet_prefix, load_trams_map)
 from hot_path import read_parking_counters, start_parking_consumer
+from warm_path_cameras import get_cameras_snapshot, parse_s3_url, start_camera_consumer
 from warm_path_trams import (get_iot_snapshot, get_trams_snapshot, start_iot_consumer, start_trams_consumer)
 from map_view import render_trams_map
 import io
@@ -221,7 +222,14 @@ def _detect_vehicles(image_bytes: bytes, model) -> tuple[bytes, dict]:
 
 def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
     """Seccio de visualitzacio de cameres de transit amb deteccio de vehicles opcional."""
-    sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
+    snapshot = get_cameras_snapshot()
+    use_warm = bool(snapshot)
+
+    if use_warm:
+        sites = sorted(snapshot.keys())
+    else:
+        sites = list_traffic_camera_gallery_sites(bucket, data_prefix)
+
     if not sites:
         st.info("No camera images available.")
         return
@@ -239,23 +247,39 @@ def section_traffic_cameras(bucket: str, data_prefix: str) -> None:
     with col_toggle:
         yolo_on = st.toggle("Vehicle detection", value=False, key="yolo_toggle")
 
-    items = list_traffic_camera_gallery_objects(bucket, data_prefix, selected)
-    if not items:
-        st.warning("No images for this camera.")
-        return
-
-    if len(items) > 1:
-        names = [n for _, n in items]
-        choice_name = st.select_slider("Snapshot", options=names, label_visibility="collapsed")
-        key = next(k for k, n in items if n == choice_name)
+    if use_warm:
+        items = snapshot[selected]
+        if not items:
+            st.warning("No images for this camera.")
+            return
+        if len(items) > 1:
+            names = [e["filename"] for e in items]
+            choice_name = st.select_slider("Snapshot", options=names, label_visibility="collapsed")
+            entry = next(e for e in items if e["filename"] == choice_name)
+        else:
+            entry = items[0]
+        s3_bucket, s3_key = parse_s3_url(entry["url"])
+        try:
+            body = get_s3_object_bytes(s3_bucket, s3_key)
+        except Exception as ex:
+            st.error(f"Could not load image: {ex}")
+            return
     else:
-        key, _ = items[0]
-
-    try:
-        body = get_s3_object_bytes(bucket, key)
-    except Exception as ex:
-        st.error(f"Could not load image: {ex}")
-        return
+        items = list_traffic_camera_gallery_objects(bucket, data_prefix, selected)
+        if not items:
+            st.warning("No images for this camera.")
+            return
+        if len(items) > 1:
+            names = [n for _, n in items]
+            choice_name = st.select_slider("Snapshot", options=names, label_visibility="collapsed")
+            key = next(k for k, n in items if n == choice_name)
+        else:
+            key, _ = items[0]
+        try:
+            body = get_s3_object_bytes(bucket, key)
+        except Exception as ex:
+            st.error(f"Could not load image: {ex}")
+            return
 
     if not yolo_on:
         st.image(body, use_container_width=True)
@@ -1050,7 +1074,13 @@ def main() -> None:
 
     _section_title("Traffic cameras")
     with st.container(border=True):
-        section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
+        start_camera_consumer()
+
+        @st.fragment(run_every="10m")
+        def _cameras_widget() -> None:
+            section_traffic_cameras(exploitation_bucket, data_prefix=_env("DATA_PREFIX", ""))
+
+        _cameras_widget()
 
     _section_title(
         "Vehicle location search",
