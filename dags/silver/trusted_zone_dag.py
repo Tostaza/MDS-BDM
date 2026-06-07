@@ -46,6 +46,8 @@ def trusted_zone_pipeline():
     # Execucio de trapsas de tota la informacio i dades de Persitent-lading-Zone cap a la Trusted Zone.
     # Aplicant cert cleaning i certa standarització, farem que totes les dades segueixin un esquema tabular.
     # Sera mes facil despres per poder treballar amb les dades si aqui elaborem per a totes un tabular shcema.
+    TRUSTED_DIR = "/opt/spark/work-dir/trusted-zone"
+
     run_trusted_zone = SparkSubmitOperator(
         task_id="spark_submit_trusted_zone",
         conn_id="spark_bdm",
@@ -53,6 +55,7 @@ def trusted_zone_pipeline():
         name="trusted-zone-airflow",
         deploy_mode="client",
         driver_memory="1g",
+        py_files=f"{TRUSTED_DIR}/trusted_paths.py,{TRUSTED_DIR}/trusted_pipelines.py,{TRUSTED_DIR}/cleaner.py",
         packages="io.delta:delta-core_2.12:2.4.0", # Llibreria Delta Lake que spark descarrega de Maven.
         execution_timeout=timedelta(minutes=60),
         verbose=False,

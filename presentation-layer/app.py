@@ -802,6 +802,7 @@ def section_daily_incidents(bucket: str) -> None:
     total = len(df)
     st.caption(f"{total} incident{'s' if total != 1 else ''} loaded")
 
+    cards = []
     for _, row in df.iterrows():
         titol     = str(row.get("titol", "") or "").strip()
         desc      = str(row.get("descripcio", "") or "").strip()
@@ -809,6 +810,11 @@ def section_daily_incidents(bucket: str) -> None:
         link      = str(row.get("link", "") or "").strip()
         data_ts   = row.get("data_ts")
         carretera = str(row.get("carretera", "") or "").strip()
+
+        if titol.lower() == "nan":
+            titol = "SCT_traffic_Open_Data"
+        if autor.lower() == "nan":
+            autor = "SCT_traffic_Open_Data"
 
         text = titol if titol else desc
         if not text:
@@ -834,7 +840,7 @@ def section_daily_incidents(bucket: str) -> None:
                 f'View post ↗</a>'
             )
 
-        st.html(f"""
+        cards.append(f"""
         <div style="background:linear-gradient(135deg,rgba(30,41,59,0.75),rgba(15,23,42,0.85));
                     border:1px solid rgba(148,163,184,0.12);border-left:3px solid rgba(94,234,212,0.5);
                     border-radius:12px;padding:0.9rem 1.1rem;margin-bottom:0.5rem;">
@@ -852,6 +858,13 @@ def section_daily_incidents(bucket: str) -> None:
             {link_btn}
         </div>
         """)
+
+    if cards:
+        st.html(
+            '<div style="max-height:520px;overflow-y:auto;padding-right:0.25rem;">'
+            + "".join(cards)
+            + "</div>"
+        )
 
 def section_camera_search() -> None:
     """Cerca la camera mes similar a una imatge pujada per l'usuari via CLIP + ChromaDB."""
